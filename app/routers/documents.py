@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 import sqlite3
-import zipfile
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
 from app import storage
 from app.database import get_db
-from app.ingestion.docx_parser import extract_comments
 
-router = APIRouter(prefix="/documents", tags=["documents"])
+router = APIRouter(prefix="/api/documents", tags=["documents"])
 
 
 @router.post("")
@@ -17,20 +15,13 @@ async def upload_document(
     file: UploadFile = File(...),
     conn: sqlite3.Connection = Depends(get_db),
 ):
-    if not file.filename.lower().endswith(".docx"):
-        raise HTTPException(status_code=400, detail="Only .docx files are supported.")
-
     content = await file.read()
-    document_id, saved_path = storage.save_document(conn, file.filename, content)
-
     try:
-        comments = extract_comments(saved_path)
-    except (zipfile.BadZipFile, ValueError) as exc:
-        raise HTTPException(
-            status_code=400, detail=f"Could not read {file.filename}: {exc}"
-        ) from exc
+        document_id = storage.ingest_uploaded_file(conn, file.filename, content)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    storage.save_comments(conn, document_id, comments)
+    comments = storage.list_comments(conn, document_id)
     return {"id": document_id, "filename": file.filename, "comment_count": len(comments)}
 
 

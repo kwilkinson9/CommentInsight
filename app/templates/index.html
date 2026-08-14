@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Comment Insight{% endblock %}
+{% block content %}
+  <h1>Upload a document</h1>
+
+  {% if error %}
+    <div class="error">{{ error }}</div>
+  {% endif %}
+
+  <form class="filters" method="post" action="/upload" enctype="multipart/form-data">
+    <div>
+      <label for="file">Word document (.docx)</label>
+      <input type="file" id="file" name="file" accept=".docx" required>
+    </div>
+    <button type="submit">Upload &amp; extract comments</button>
+  </form>
+
+  <h2>Documents</h2>
+  {% if documents %}
+    <table>
+      <thead>
+        <tr>
+          <th>Filename</th>
+          <th>Uploaded</th>
+          <th>Comments</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for doc in documents %}
+          <tr>
+            <td><a href="/documents/{{ doc.id }}">{{ doc.filename }}</a></td>
+            <td class="muted">{{ doc.uploaded_at }}</td>
+            <td>{{ doc.comment_count }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty-state">No documents uploaded yet.</div>
+  {% endif %}
+{% endblock %}

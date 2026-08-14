@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}{{ document.filename }} - Comment Insight{% endblock %}
+{% block content %}
+  <p><a href="/">&larr; All documents</a></p>
+  <h1>{{ document.filename }}</h1>
+  <p class="muted">Uploaded {{ document.uploaded_at }} &middot; {{ total_count }} comment{{ "" if total_count == 1 else "s" }} total</p>
+
+  <form class="filters" method="get" action="/documents/{{ document.id }}">
+    <div>
+      <label for="q">Search</label>
+      <input type="text" id="q" name="q" value="{{ q or '' }}" placeholder="Search comment text or document text">
+    </div>
+    <div>
+      <label for="author">Reviewer</label>
+      <select id="author" name="author">
+        <option value="">All reviewers</option>
+        {% for a in authors %}
+          <option value="{{ a }}" {{ "selected" if a == author else "" }}>{{ a }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit">Filter</button>
+    {% if q or author %}
+      <a class="button-link" href="/documents/{{ document.id }}">Clear</a>
+    {% endif %}
+  </form>
+
+  {% if q or author %}
+    <p class="muted">Showing {{ comments|length }} of {{ total_count }} comments</p>
+  {% endif %}
+
+  {% if comments %}
+    <table>
+      <thead>
+        <tr>
+          <th>Reviewer</th>
+          <th>Date</th>
+          <th>Location</th>
+          <th>Comment</th>
+          <th>Document text</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in comments %}
+          <tr>
+            <td>{{ c.author }}</td>
+            <td class="muted">{{ c.comment_date }}</td>
+            <td>{% if c.section %}<span class="section-tag">{{ c.section }}</span>{% endif %}</td>
+            <td>
+              {% if c.parent_author %}
+                <span class="reply-tag">&#8618; reply to {{ c.parent_author }}</span><br>
+              {% endif %}
+              {{ c.text }}
+            </td>
+            <td>
+              {% if c.anchor_text %}
+                &hellip;<span class="anchor-text">{{ c.anchor_text }}</span>&hellip;
+              {% endif %}
+              {% if c.paragraph_text and c.paragraph_text != c.anchor_text %}
+                <div class="muted">{{ c.paragraph_text }}</div>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty-state">No comments match this filter.</div>
+  {% endif %}
+{% endblock %}

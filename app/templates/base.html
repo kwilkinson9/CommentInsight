@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Comment Insight{% endblock %}</title>
+  <style>
+    :root {
+      --border: #d8dde3;
+      --muted: #6b7280;
+      --bg: #f7f8fa;
+      --accent: #2b5797;
+      --accent-bg: #eaf1fb;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: #1f2328;
+      background: var(--bg);
+    }
+    header {
+      background: #fff;
+      border-bottom: 1px solid var(--border);
+      padding: 0.9rem 1.5rem;
+    }
+    header a {
+      font-weight: 600;
+      font-size: 1.1rem;
+      color: #1f2328;
+      text-decoration: none;
+    }
+    main {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 1.5rem;
+    }
+    h1 { font-size: 1.4rem; margin: 0 0 1rem; }
+    h2 { font-size: 1.1rem; margin: 1.5rem 0 0.5rem; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+      border: 1px solid var(--border);
+    }
+    th, td {
+      text-align: left;
+      padding: 0.55rem 0.7rem;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+      font-size: 0.92rem;
+    }
+    th { background: #f0f2f5; font-weight: 600; }
+    tr:last-child td { border-bottom: none; }
+    .muted { color: var(--muted); font-size: 0.85rem; }
+    .section-tag {
+      display: inline-block;
+      background: var(--accent-bg);
+      color: var(--accent);
+      border-radius: 4px;
+      padding: 0.1rem 0.4rem;
+      font-size: 0.78rem;
+    }
+    .anchor-text {
+      background: #fff7e0;
+      padding: 0.1rem 0.25rem;
+      border-radius: 3px;
+    }
+    .reply-tag {
+      display: inline-block;
+      background: #eef2f6;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0 0.35rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-bottom: 0.2rem;
+    }
+    form.filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      align-items: end;
+      margin-bottom: 1rem;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.9rem;
+    }
+    form.filters label {
+      display: block;
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-bottom: 0.25rem;
+    }
+    input[type=text], select, input[type=file] {
+      padding: 0.4rem 0.5rem;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-size: 0.9rem;
+    }
+    button {
+      padding: 0.45rem 0.9rem;
+      border: 1px solid var(--accent);
+      background: var(--accent);
+      color: #fff;
+      border-radius: 4px;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+    a.button-link {
+      display: inline-block;
+      padding: 0.45rem 0.9rem;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-size: 0.85rem;
+      color: #1f2328;
+      text-decoration: none;
+      background: #fff;
+    }
+    .error {
+      background: #fdecea;
+      border: 1px solid #f3b6ae;
+      color: #8a2c22;
+      padding: 0.6rem 0.9rem;
+      border-radius: 6px;
+      margin-bottom: 1rem;
+    }
+    .empty-state {
+      color: var(--muted);
+      padding: 1.5rem;
+      text-align: center;
+      background: #fff;
+      border: 1px dashed var(--border);
+      border-radius: 6px;
+    }
+  </style>
+</head>
+<body>
+  <header><a href="/">Comment Insight</a></header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>
