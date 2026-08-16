@@ -9,13 +9,49 @@ from __future__ import annotations
 
 import io
 from datetime import datetime, timezone
+from pathlib import Path
 
 from docx import Document
-from docx.shared import Pt, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+from docx.shared import Inches, Pt, RGBColor
 
 from app import storage
 
 _MUTED = RGBColor(0x6B, 0x72, 0x80)
+_BRAND_RED = RGBColor(0xB3, 0x18, 0x2F)
+_BRAND_RED_HEX = "B3182F"
+_BRAND_TINT_HEX = "FDEEF0"
+_ICON_PATH = Path(__file__).resolve().parent / "static" / "comment-insight-icon.png"
+
+
+def _add_bottom_border(paragraph, color: str = _BRAND_RED_HEX, size: int = 12) -> None:
+    """A thin colored rule under a paragraph -- python-docx has no built-in
+    horizontal rule, so this drops down to the underlying XML. Mirrors the
+    red underline in the Comment Insight wordmark."""
+    p_pr = paragraph._p.get_or_add_pPr()
+    border = OxmlElement("w:pBdr")
+    bottom = OxmlElement("w:bottom")
+    bottom.set(qn("w:val"), "single")
+    bottom.set(qn("w:sz"), str(size))
+    bottom.set(qn("w:space"), "4")
+    bottom.set(qn("w:color"), color)
+    border.append(bottom)
+    p_pr.append(border)
+
+
+def _shade_cell(cell, color: str) -> None:
+    shading = OxmlElement("w:shd")
+    shading.set(qn("w:fill"), color)
+    cell._tc.get_or_add_tcPr().append(shading)
+
+
+def _add_section_heading(doc: Document, text: str):
+    heading = doc.add_heading(text, level=1)
+    for run in heading.runs:
+        run.font.color.rgb = _BRAND_RED
+    return heading
 
 
 def _friendly_date(value: str | None) -> str:
@@ -80,15 +116,27 @@ def build_report(document: dict, comments: list[dict]) -> bytes:
     followed by a compact table of everything else."""
     doc = Document()
 
-    doc.add_heading("Comment Resolution Report", level=0)
-    doc.add_paragraph(document["filename"])
+    if _ICON_PATH.exists():
+        icon_paragraph = doc.add_paragraph()
+        icon_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        icon_paragraph.add_run().add_picture(str(_ICON_PATH), width=Inches(0.55))
+
+    title = doc.add_heading("Comment Resolution Report", level=0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    for run in title.runs:
+        run.font.color.rgb = _BRAND_RED
+    _add_bottom_border(title)
+
+    filename_p = doc.add_paragraph(document["filename"])
+    filename_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     generated = doc.add_paragraph()
+    generated.alignment = WD_ALIGN_PARAGRAPH.CENTER
     _muted(generated, f"Generated {_friendly_date(datetime.now(timezone.utc).isoformat())}")
 
     priority_comments = [c for c in comments if storage.is_priority(c)]
     other_comments = [c for c in comments if not storage.is_priority(c)]
 
-    doc.add_heading("Summary", level=1)
+    _add_section_heading(doc, "Summary")
     summary = doc.add_paragraph()
     summary.add_run(f"{len(comments)} total comment{'' if len(comments) == 1 else 's'}").bold = True
     summary.add_run(f"   ·   {len(priority_comments)} need team discussion")
@@ -103,7 +151,7 @@ def build_report(document: dict, comments: list[dict]) -> bytes:
         doc.add_paragraph(f"Resolutions recorded so far: {parts}")
 
     if priority_comments:
-        doc.add_heading("For Team Discussion", level=1)
+        _add_section_heading(doc, "For Team Discussion")
         doc.add_paragraph(
             "Comments that need a specialist's sign-off, or where two reviewers were flagged as disagreeing."
         )
@@ -111,13 +159,14 @@ def build_report(document: dict, comments: list[dict]) -> bytes:
             _add_comment_block(doc, comment)
 
     if other_comments:
-        doc.add_heading("Other Comments", level=1)
+        _add_section_heading(doc, "Other Comments")
         table = doc.add_table(rows=1, cols=5)
         table.style = "Table Grid"
         headers = ["Reviewer", "Category", "Comment", "Document Text", "Resolution"]
         for cell, text in zip(table.rows[0].cells, headers):
             cell.text = text
             cell.paragraphs[0].runs[0].bold = True
+            _shade_cell(cell, _BRAND_TINT_HEX)
 
         for comment in other_comments:
             row = table.add_row().cells
@@ -126,6 +175,11 @@ def build_report(document: dict, comments: list[dict]) -> bytes:
             row[2].text = comment["text"]
             row[3].text = comment.get("anchor_text") or ""
             row[4].text = storage.RESOLUTION_LABELS.get(comment.get("resolution_status"), "No decision yet")
+
+    doc.add_paragraph()
+    credit = doc.add_paragraph()
+    credit.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    _muted(credit, "Comment Insight -- part of Dossentra, Medical Writing Solutions", italic=True)
 
     buffer = io.BytesIO()
     doc.save(buffer)
