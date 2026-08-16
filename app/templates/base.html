@@ -95,6 +95,14 @@
     tr:last-child td { border-bottom: none; }
     tbody tr:hover { background: var(--surface-muted); }
 
+.page-title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
     /* Comment cards */
     .comment-card {
       background: var(--surface);
@@ -103,6 +111,23 @@
       box-shadow: var(--shadow-sm);
       margin-bottom: 0.85rem;
       overflow: hidden;
+    }
+    .comment-card-priority {
+      border-left: 4px solid #c2410c;
+    }
+    .priority-badge {
+      display: inline-block;
+      background: #fff0e6;
+      color: #c2410c;
+      border: 1px solid #fbd3b8;
+      border-radius: 4px;
+      padding: 0.1rem 0.4rem;
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+      margin-right: 0.35rem;
+      white-space: nowrap;
     }
     .comment-card-header {
       display: grid;
@@ -144,6 +169,28 @@
       margin: 0;
       font-size: 0.83rem;
       line-height: 1.5;
+    }
+    .conflict-box {
+      padding: 0.75rem 1.1rem;
+      background: #fdf2f2;
+      border-top: 1px solid #f5d5d5;
+    }
+    .conflict-item {
+      margin: 0.25rem 0 0;
+      font-size: 0.85rem;
+      line-height: 1.45;
+    }
+    .comment-card-footer {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.6rem 1.1rem;
+      border-top: 1px solid var(--border);
+    }
+    .comment-card-footer .field-label { margin-bottom: 0; }
+    .comment-card-footer select {
+      padding: 0.3rem 0.5rem;
+      font-size: 0.85rem;
     }
 
     .muted { color: var(--muted); font-size: 0.85rem; }

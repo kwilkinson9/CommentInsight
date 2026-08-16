@@ -2,8 +2,15 @@
 {% block title %}{{ document.filename }} - Comment Insight{% endblock %}
 {% block content %}
   <p><a href="/">&larr; All documents</a></p>
-  <h1>{{ document.filename }}</h1>
-  <p class="muted">Uploaded {{ document.uploaded_at|friendly_date }} &middot; {{ total_count }} comment{{ "" if total_count == 1 else "s" }} total</p>
+  <div class="page-title-row">
+    <div>
+      <h1>{{ document.filename }}</h1>
+      <p class="muted">Uploaded {{ document.uploaded_at|friendly_date }} &middot; {{ total_count }} comment{{ "" if total_count == 1 else "s" }} total</p>
+    </div>
+    {% if total_count > 0 %}
+      <a class="button-link" href="/documents/{{ document.id }}/export">Export report (.docx)</a>
+    {% endif %}
+  </div>
 
   {% if error %}
     <div class="error">{{ error }}</div>
@@ -18,6 +25,17 @@
         <span class="muted">All {{ total_count }} comments classified</span>
       {% endif %}
     </form>
+
+    {% if total_count > 1 %}
+      <form class="filters" method="post" action="/documents/{{ document.id }}/detect-conflicts">
+        {% if conflict_count > 0 %}
+          <span class="muted">{{ conflict_count }} comment{{ "" if conflict_count == 1 else "s" }} flagged as reviewer disagreements</span>
+        {% else %}
+          <span class="muted">No reviewer disagreements flagged yet</span>
+        {% endif %}
+        <button type="submit">Check for disagreements</button>
+      </form>
+    {% endif %}
   {% endif %}
 
   {% if total_count > 0 %}
@@ -49,6 +67,7 @@
       <div>
         <label for="sort">Sort by</label>
         <select id="sort" name="sort">
+          <option value="priority" {{ "selected" if sort == "priority" else "" }}>Priority</option>
           <option value="document" {{ "selected" if sort == "document" else "" }}>Document order</option>
           <option value="date" {{ "selected" if sort == "date" else "" }}>Date</option>
           <option value="reviewer" {{ "selected" if sort == "reviewer" else "" }}>Reviewer</option>
@@ -69,7 +88,7 @@
     <div class="empty-state">This document has no comments.</div>
   {% elif comments %}
     {% for c in comments %}
-      <article class="comment-card">
+      <article class="comment-card{{ ' comment-card-priority' if c.is_priority else '' }}">
         <div class="comment-card-header">
           <div>
             <span class="field-label">Reviewer</span>
@@ -86,6 +105,7 @@
           <div>
             <span class="field-label">Category</span>
             <div>
+              {% if c.is_priority %}<span class="priority-badge">&#9873; Priority</span>{% endif %}
               {% if c.category %}
                 <span class="category-tag {{ c.category|category_class }}">{{ c.category }}</span>
               {% else %}
@@ -106,6 +126,15 @@
           {% endif %}
         </div>
 
+        {% if c.conflicts %}
+          <div class="conflict-box">
+            <span class="field-label">Disagrees with another reviewer</span>
+            {% for conf in c.conflicts %}
+              <p class="conflict-item"><strong>{{ conf.other_author }}:</strong> &ldquo;{{ conf.other_text }}&rdquo;<br><span class="muted">{{ conf.reason }}</span></p>
+            {% endfor %}
+          </div>
+        {% endif %}
+
         {% if c.anchor_text or c.paragraph_text %}
           <div class="comment-card-context">
             <span class="field-label">Document text</span>
@@ -117,6 +146,19 @@
             {% endif %}
           </div>
         {% endif %}
+
+        <div class="comment-card-footer">
+          <span class="field-label">Resolution</span>
+          <form method="post" action="/documents/{{ document.id }}/comments/{{ c.id }}/resolution">
+            <input type="hidden" name="next" value="/documents/{{ document.id }}{{ '?' + current_query if current_query else '' }}">
+            <select name="status" onchange="this.form.submit()">
+              <option value="" {{ "selected" if not c.resolution_status else "" }}>No decision yet</option>
+              {% for status in resolution_statuses %}
+                <option value="{{ status }}" {{ "selected" if c.resolution_status == status else "" }}>{{ resolution_labels[status] }}</option>
+              {% endfor %}
+            </select>
+          </form>
+        </div>
       </article>
     {% endfor %}
   {% else %}

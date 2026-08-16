@@ -109,11 +109,19 @@ def get_document(conn: sqlite3.Connection, document_id: int) -> dict | None:
 
 
 SORT_OPTIONS = {
+    "priority": "CASE WHEN category = 'Decision Required' OR conflict_count > 0 THEN 0 ELSE 1 END, c.id",
     "document": "c.id",
     "date": "c.comment_date IS NULL, c.comment_date, c.id",
     "reviewer": "c.author COLLATE NOCASE, c.id",
 }
-DEFAULT_SORT = "document"
+DEFAULT_SORT = "priority"
+
+RESOLUTION_STATUSES = ["accepted", "rejected", "crm"]
+RESOLUTION_LABELS = {
+    "accepted": "Accepted",
+    "rejected": "Rejected",
+    "crm": "CRM (needs meeting)",
+}
 
 
 def list_comments(
@@ -128,18 +136,25 @@ def list_comments(
     search (matches comment text, anchored text, or paragraph context), an
     exact author match, and/or an exact classification category. Each row
     also carries parent_author (the name of the comment it's replying to, or
-    None) and, if classified, category and rationale (both None otherwise).
+    None), category/rationale (if classified), resolution_status (if the
+    writer has recorded one), and conflict_count (how many other comments
+    it's been flagged as disagreeing with).
 
-    `sort` picks the ordering: "document" (as it appears in the file, the
-    default), "date", or "reviewer". An unrecognized value falls back to the
-    default rather than erroring, since it only ever comes from a URL query
-    string that a user could hand-edit.
+    `sort` picks the ordering: "priority" (comments needing team input or
+    flagged as conflicting first, the default), "document" (as it appears
+    in the file), "date", or "reviewer". An unrecognized value falls back
+    to the default rather than erroring, since it only ever comes from a
+    URL query string that a user could hand-edit.
     """
     sql = """
-        SELECT c.*, p.author AS parent_author, cl.category AS category, cl.rationale AS rationale
+        SELECT c.*, p.author AS parent_author, cl.category AS category, cl.rationale AS rationale,
+               res.status AS resolution_status,
+               (SELECT COUNT(*) FROM conflicts cf
+                WHERE cf.comment_id = c.id OR cf.conflicts_with_comment_id = c.id) AS conflict_count
         FROM comments c
         LEFT JOIN comments p ON c.parent_comment_id = p.id
         LEFT JOIN classifications cl ON cl.comment_id = c.id
+        LEFT JOIN resolutions res ON res.comment_id = c.id
         WHERE c.document_id = ?
     """
     params: list = [document_id]
@@ -161,6 +176,75 @@ def list_comments(
 
     rows = conn.execute(sql, params).fetchall()
     return [dict(row) for row in rows]
+
+
+def save_resolution(conn: sqlite3.Connection, comment_id: int, status: str | None) -> None:
+    """Record (or clear, if status is None/empty) the writer's decision on a
+    comment. This is the writer's own call, never set by the AI."""
+    if not status:
+        conn.execute("DELETE FROM resolutions WHERE comment_id = ?", (comment_id,))
+    else:
+        conn.execute(
+            """
+            INSERT INTO resolutions (comment_id, status, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(comment_id) DO UPDATE SET
+                status = excluded.status,
+                updated_at = excluded.updated_at
+            """,
+            (comment_id, status, datetime.now(timezone.utc).isoformat()),
+        )
+    conn.commit()
+
+
+def replace_conflicts(
+    conn: sqlite3.Connection, document_id: int, pairs: list[tuple[int, int, str, str]]
+) -> None:
+    """Replace this document's conflict list wholesale. Conflict detection
+    always looks at every comment together, so (unlike classification) a
+    re-run is a fresh full analysis, not an incremental one -- the old
+    results are cleared first. `pairs` is (comment_id, conflicts_with_comment_id,
+    reason, model)."""
+    conn.execute(
+        "DELETE FROM conflicts WHERE document_id = ?",
+        (document_id,),
+    )
+    now = datetime.now(timezone.utc).isoformat()
+    conn.executemany(
+        """
+        INSERT INTO conflicts (document_id, comment_id, conflicts_with_comment_id, reason, model, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        [(document_id, a, b, reason, model, now) for a, b, reason, model in pairs],
+    )
+    conn.commit()
+
+
+def list_conflicts_by_comment(conn: sqlite3.Connection, document_id: int) -> dict[int, list[dict]]:
+    """Conflict details grouped by comment_id, from both sides of each pair
+    (a comment shows up here whether it was stored as the first or second
+    half of the pair) -- {comment_id: [{other_author, other_text, reason}]}."""
+    rows = conn.execute(
+        """
+        SELECT cf.comment_id, cf.reason, other.author AS other_author, other.text AS other_text
+        FROM conflicts cf
+        JOIN comments other ON other.id = cf.conflicts_with_comment_id
+        WHERE cf.document_id = ?
+        UNION ALL
+        SELECT cf.conflicts_with_comment_id AS comment_id, cf.reason, other.author AS other_author, other.text AS other_text
+        FROM conflicts cf
+        JOIN comments other ON other.id = cf.comment_id
+        WHERE cf.document_id = ?
+        """,
+        (document_id, document_id),
+    ).fetchall()
+
+    grouped: dict[int, list[dict]] = {}
+    for row in rows:
+        grouped.setdefault(row["comment_id"], []).append(
+            {"other_author": row["other_author"], "other_text": row["other_text"], "reason": row["reason"]}
+        )
+    return grouped
 
 
 def list_authors(conn: sqlite3.Connection, document_id: int) -> list[str]:

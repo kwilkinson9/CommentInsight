@@ -39,6 +39,24 @@ CREATE TABLE IF NOT EXISTS classifications (
     created_at TEXT NOT NULL,
     UNIQUE(comment_id)
 );
+
+CREATE TABLE IF NOT EXISTS resolutions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    comment_id INTEGER NOT NULL REFERENCES comments(id),
+    status TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(comment_id)
+);
+
+CREATE TABLE IF NOT EXISTS conflicts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    document_id INTEGER NOT NULL REFERENCES documents(id),
+    comment_id INTEGER NOT NULL REFERENCES comments(id),
+    conflicts_with_comment_id INTEGER NOT NULL REFERENCES comments(id),
+    reason TEXT NOT NULL,
+    model TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
 """
 
 
