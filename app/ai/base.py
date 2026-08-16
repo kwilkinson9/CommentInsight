@@ -53,3 +53,42 @@ class ConflictDetector(ABC):
 
     @abstractmethod
     def detect_conflicts(self, comments: list[Comment]) -> list[ConflictPair]: ...
+
+
+@dataclass
+class InsightComment:
+    """A comment shape for cross-document pattern analysis -- unlike
+    Comment (single-document extraction), this carries which document a
+    comment came from plus the classification/resolution decisions already
+    made on it, since spotting a pattern often depends on knowing those."""
+
+    document_filename: str
+    author: str
+    text: str
+    category: str | None
+    resolution_status: str | None
+    section: str | None
+
+
+@dataclass
+class InsightTheme:
+    title: str
+    description: str
+
+
+@dataclass
+class AnalysisInsights:
+    overview: str
+    themes: list[InsightTheme]
+
+
+class InsightsGenerator(ABC):
+    """Looks across every comment on every uploaded document to find
+    recurring themes, notable reviewer patterns, and how documents compare
+    -- unlike ConflictDetector (pairs within one document), this reasons
+    over the whole corpus at once and returns prose, not comment-id pairs."""
+
+    model_name: str
+
+    @abstractmethod
+    def generate_insights(self, comments: list[InsightComment]) -> AnalysisInsights: ...

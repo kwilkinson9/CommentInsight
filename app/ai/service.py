@@ -7,10 +7,11 @@ only place that talks to both.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 
-from app import storage
-from app.ai.base import Classifier, ConflictDetector
+from app import analysis, storage
+from app.ai.base import AnalysisInsights, Classifier, ConflictDetector, InsightComment, InsightsGenerator
 from app.ingestion.docx_parser import Comment
 
 
@@ -77,3 +78,33 @@ def detect_conflicts_for_document(
     ]
     storage.replace_conflicts(conn, document_id, db_pairs)
     return len(db_pairs)
+
+
+def generate_insights(conn: sqlite3.Connection, generator: InsightsGenerator) -> AnalysisInsights:
+    """Generate cross-document insights and persist them, replacing whatever
+    was generated before. Reuses analysis.gather() so this sees exactly the
+    same comment data the analysis page and its exports show."""
+    data = analysis.gather(conn)
+    comments = [
+        InsightComment(
+            document_filename=c["document_filename"],
+            author=c["author"],
+            text=c["text"],
+            category=c.get("category"),
+            resolution_status=c.get("resolution_status"),
+            section=c.get("section"),
+        )
+        for c in data["all_comments"]
+    ]
+
+    result = generator.generate_insights(comments)
+
+    storage.save_insights(
+        conn,
+        overview=result.overview,
+        themes_json=json.dumps([{"title": t.title, "description": t.description} for t in result.themes]),
+        document_count=data["total_documents"],
+        comment_count=data["total_comments"],
+        model=generator.model_name,
+    )
+    return result

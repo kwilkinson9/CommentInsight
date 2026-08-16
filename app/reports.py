@@ -201,6 +201,7 @@ def build_multi_document_report(
     total_documents: int,
     total_comments: int,
     priority_count: int,
+    insights: dict | None = None,
 ) -> bytes:
     """Build the cross-document analysis report -- summary + both charts
     (embedded as images; python-docx can't render SVG) + a per-document
@@ -229,6 +230,14 @@ def build_multi_document_report(
         _add_section_heading(doc, "Comments by Resolution Status")
         chart_png = chart_images.render_bar_chart_png("Comments by resolution status", resolution_chart_rows)
         doc.add_picture(io.BytesIO(chart_png), width=Inches(6.3))
+
+    if insights and (insights.get("overview") or insights.get("themes")):
+        _add_section_heading(doc, "AI Insights")
+        doc.add_paragraph(insights["overview"])
+        for theme in insights.get("themes", []):
+            theme_p = doc.add_paragraph()
+            theme_p.add_run(theme["title"]).bold = True
+            doc.add_paragraph(theme["description"])
 
     if document_summaries:
         _add_section_heading(doc, "By Document")

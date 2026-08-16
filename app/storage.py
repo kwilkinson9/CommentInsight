@@ -326,6 +326,35 @@ def list_unclassified_comments(conn: sqlite3.Connection, document_id: int) -> li
     return [dict(row) for row in rows]
 
 
+def save_insights(
+    conn: sqlite3.Connection,
+    overview: str,
+    themes_json: str,
+    document_count: int,
+    comment_count: int,
+    model: str,
+) -> None:
+    """Persist the latest cross-document insights, replacing whatever was
+    generated before -- like conflict detection, this is always a fresh
+    full re-analysis, so there's no reason to keep old runs around.
+    document_count/comment_count are recorded so the analysis page can tell
+    the writer if the documents have changed since insights were generated."""
+    conn.execute("DELETE FROM analysis_insights")
+    conn.execute(
+        """
+        INSERT INTO analysis_insights (overview, themes_json, document_count, comment_count, model, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (overview, themes_json, document_count, comment_count, model, datetime.now(timezone.utc).isoformat()),
+    )
+    conn.commit()
+
+
+def get_latest_insights(conn: sqlite3.Connection) -> dict | None:
+    row = conn.execute("SELECT * FROM analysis_insights ORDER BY id DESC LIMIT 1").fetchone()
+    return dict(row) if row else None
+
+
 def save_classification(
     conn: sqlite3.Connection, comment_id: int, category: str, rationale: str, model: str
 ) -> None:

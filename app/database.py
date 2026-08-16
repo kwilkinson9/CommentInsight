@@ -57,6 +57,16 @@ CREATE TABLE IF NOT EXISTS conflicts (
     model TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS analysis_insights (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    overview TEXT NOT NULL,
+    themes_json TEXT NOT NULL,
+    document_count INTEGER NOT NULL,
+    comment_count INTEGER NOT NULL,
+    model TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
 """
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 from datetime import datetime
@@ -13,8 +14,9 @@ from fastapi.templating import Jinja2Templates
 from app import analysis, charts, reports, storage, xlsx_reports
 from app.ai.anthropic_classifier import AnthropicClassifier
 from app.ai.anthropic_conflict_detector import AnthropicConflictDetector
-from app.ai.base import Classifier, ConflictDetector
-from app.ai.service import classify_document, detect_conflicts_for_document
+from app.ai.anthropic_insights import AnthropicInsightsGenerator
+from app.ai.base import Classifier, ConflictDetector, InsightsGenerator
+from app.ai.service import classify_document, detect_conflicts_for_document, generate_insights
 from app.database import get_db
 
 router = APIRouter(tags=["dashboard"])
@@ -57,6 +59,37 @@ def get_classifier() -> Classifier:
 def get_conflict_detector() -> ConflictDetector:
     """Same pattern as get_classifier() -- overridden in tests."""
     return AnthropicConflictDetector()
+
+
+def get_insights_generator() -> InsightsGenerator:
+    """Same pattern as get_classifier() -- overridden in tests."""
+    return AnthropicInsightsGenerator()
+
+
+def _insights_context(conn: sqlite3.Connection) -> dict:
+    """{"insights": ..., "insights_stale": ...} -- insights is None if none
+    have been generated yet; insights_stale is True if the document/comment
+    counts have changed since the stored insights were generated, which is
+    the closest cheap proxy for "the documents changed, this may be out of
+    date" without diffing actual content."""
+    row = storage.get_latest_insights(conn)
+    if row is None:
+        return {"insights": None, "insights_stale": False}
+
+    current = analysis.gather(conn)
+    stale = (
+        row["document_count"] != current["total_documents"]
+        or row["comment_count"] != current["total_comments"]
+    )
+    return {
+        "insights": {
+            "overview": row["overview"],
+            "themes": json.loads(row["themes_json"]),
+            "created_at": row["created_at"],
+            "model": row["model"],
+        },
+        "insights_stale": stale,
+    }
 
 
 def _document_context(
@@ -114,12 +147,33 @@ def index(request: Request, conn: sqlite3.Connection = Depends(get_db)):
 
 @router.get("/analysis")
 def view_analysis(request: Request, conn: sqlite3.Connection = Depends(get_db)):
-    return templates.TemplateResponse(request, "analysis.html", analysis.gather(conn))
+    context = {**analysis.gather(conn), **_insights_context(conn)}
+    return templates.TemplateResponse(request, "analysis.html", context)
+
+
+@router.post("/analysis/insights")
+def create_analysis_insights(
+    request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
+    generator: InsightsGenerator = Depends(get_insights_generator),
+):
+    try:
+        generate_insights(conn, generator)
+    except Exception as exc:
+        context = {
+            **analysis.gather(conn),
+            **_insights_context(conn),
+            "error": f"Insight generation failed: {exc}",
+        }
+        return templates.TemplateResponse(request, "analysis.html", context, status_code=502)
+
+    return RedirectResponse("/analysis", status_code=303)
 
 
 @router.get("/analysis/export.docx")
 def export_analysis_docx(conn: sqlite3.Connection = Depends(get_db)):
     data = analysis.gather(conn)
+    insights = _insights_context(conn)["insights"]
     content = reports.build_multi_document_report(
         data["document_summaries"],
         data["chart_rows"],
@@ -127,6 +181,7 @@ def export_analysis_docx(conn: sqlite3.Connection = Depends(get_db)):
         data["total_documents"],
         data["total_comments"],
         data["priority_count"],
+        insights=insights,
     )
     return Response(
         content=content,
