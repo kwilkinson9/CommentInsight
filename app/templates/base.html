@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Comment Insight{% endblock %}</title>
-  <link rel="icon" type="image/png" href="/static/docsentra-icon.png">
+  <link rel="icon" type="image/png" href="/static/comment-insight-icon.png">
   <style>
     :root {
       --border: #e2e5eb;
@@ -69,6 +69,21 @@
       margin: 0 auto;
       padding: 2rem 1.75rem 3rem;
     }
+    footer {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 1.25rem 1.75rem 2rem;
+      color: var(--muted-light);
+      font-size: 0.78rem;
+    }
+    footer img {
+      width: 16px;
+      height: 16px;
+      border-radius: 4px;
+    }
+    footer strong { color: var(--muted); font-weight: 600; }
     h1 { font-size: 1.45rem; margin: 0 0 0.3rem; letter-spacing: -0.01em; }
     h2 { font-size: 1.05rem; margin: 1.75rem 0 0.6rem; color: var(--text); }
     a { color: var(--accent); }
@@ -372,9 +387,13 @@
   </style>
 </head>
 <body>
-  <header><a href="/"><span class="logo-mark"><img src="/static/docsentra-icon.png" alt=""></span>Comment Insight</a></header>
+  <header><a href="/"><span class="logo-mark"><img src="/static/comment-insight-icon.png" alt=""></span>Comment Insight</a></header>
   <main>
     {% block content %}{% endblock %}
   </main>
+  <footer>
+    <img src="/static/docsentra-icon.png" alt="">
+    <span>Part of <strong>Docsentra</strong> &mdash; Medical Writing Solutions</span>
+  </footer>
 </body>
 </html>
