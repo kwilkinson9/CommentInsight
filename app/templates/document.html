@@ -121,6 +121,20 @@
               {% endif %}
             </div>
           </div>
+          <div>
+            <span class="field-label">Resolution</span>
+            <form method="post" action="/documents/{{ document.id }}/comments/{{ c.id }}/resolution" class="resolution-form">
+              <input type="hidden" name="next" value="/documents/{{ document.id }}{{ '?' + current_query if current_query else '' }}">
+              <select name="status">
+                <option value="" {{ "selected" if not c.resolution_status else "" }}>No decision yet</option>
+                {% for status in resolution_statuses %}
+                  <option value="{{ status }}" {{ "selected" if c.resolution_status == status else "" }}>{{ resolution_labels[status] }}</option>
+                {% endfor %}
+              </select>
+              <input type="text" name="note" value="{{ c.resolution_note or '' }}" placeholder="Note, e.g. edited directly, replied in Word">
+              <button type="submit">Save</button>
+            </form>
+          </div>
         </div>
 
         <div class="comment-card-body">
@@ -155,18 +169,6 @@
           </div>
         {% endif %}
 
-        <div class="comment-card-footer">
-          <span class="field-label">Resolution</span>
-          <form method="post" action="/documents/{{ document.id }}/comments/{{ c.id }}/resolution">
-            <input type="hidden" name="next" value="/documents/{{ document.id }}{{ '?' + current_query if current_query else '' }}">
-            <select name="status" onchange="this.form.submit()">
-              <option value="" {{ "selected" if not c.resolution_status else "" }}>No decision yet</option>
-              {% for status in resolution_statuses %}
-                <option value="{{ status }}" {{ "selected" if c.resolution_status == status else "" }}>{{ resolution_labels[status] }}</option>
-              {% endfor %}
-            </select>
-          </form>
-        </div>
       </article>
     {% endfor %}
   {% else %}

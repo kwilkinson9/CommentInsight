@@ -245,11 +245,25 @@
     }
     .comment-card-header {
       display: grid;
-      grid-template-columns: 1.4fr 1fr 1.2fr 1.2fr;
+      grid-template-columns: 1.1fr 0.85fr 1fr 0.95fr 1.6fr;
       gap: 1rem;
       padding: 0.85rem 1.1rem;
       background: var(--surface-muted);
       border-bottom: 1px solid var(--border);
+    }
+    .resolution-form {
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+    .resolution-form select, .resolution-form input[type=text] {
+      padding: 0.3rem 0.5rem;
+      font-size: 0.82rem;
+    }
+    .resolution-form button {
+      align-self: flex-start;
+      padding: 0.3rem 0.7rem;
+      font-size: 0.78rem;
     }
     .field-label {
       display: block;
@@ -293,18 +307,6 @@
       margin: 0.25rem 0 0;
       font-size: 0.85rem;
       line-height: 1.45;
-    }
-    .comment-card-footer {
-      display: flex;
-      align-items: center;
-      gap: 0.6rem;
-      padding: 0.6rem 1.1rem;
-      border-top: 1px solid var(--border);
-    }
-    .comment-card-footer .field-label { margin-bottom: 0; }
-    .comment-card-footer select {
-      padding: 0.3rem 0.5rem;
-      font-size: 0.85rem;
     }
 
     .muted { color: var(--muted); font-size: 0.85rem; }

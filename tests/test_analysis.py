@@ -109,6 +109,23 @@ class AnalysisPageTests(unittest.TestCase):
         self.assertIn("Summary", wb.sheetnames)
         self.assertIn("All Comments", wb.sheetnames)
 
+    def test_xlsx_all_comments_sheet_includes_resolution_note_column(self):
+        self._upload(SAMPLE, "a.docx")
+        comment_id = self.client.get("/api/documents/1/comments").json()[0]["id"]
+        self.client.post(
+            f"/documents/1/comments/{comment_id}/resolution",
+            data={"status": "accepted", "note": "Edited directly in the document."},
+        )
+
+        resp = self.client.get("/analysis/export.xlsx")
+        wb = load_workbook(io.BytesIO(resp.content))
+        sheet = wb["All Comments"]
+        headers = [cell.value for cell in sheet[1]]
+        self.assertIn("Resolution Note", headers)
+        note_col = headers.index("Resolution Note") + 1
+        notes = [sheet.cell(row=r, column=note_col).value for r in range(2, sheet.max_row + 1)]
+        self.assertIn("Edited directly in the document.", notes)
+
 
 if __name__ == "__main__":
     unittest.main()

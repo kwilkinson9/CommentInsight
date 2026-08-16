@@ -190,7 +190,7 @@ def list_comments(
     """
     sql = """
         SELECT c.*, p.author AS parent_author, cl.category AS category, cl.rationale AS rationale,
-               res.status AS resolution_status,
+               res.status AS resolution_status, res.note AS resolution_note,
                (SELECT COUNT(*) FROM conflicts cf
                 WHERE cf.comment_id = c.id OR cf.conflicts_with_comment_id = c.id) AS conflict_count
         FROM comments c
@@ -220,21 +220,26 @@ def list_comments(
     return [dict(row) for row in rows]
 
 
-def save_resolution(conn: sqlite3.Connection, comment_id: int, status: str | None) -> None:
+def save_resolution(conn: sqlite3.Connection, comment_id: int, status: str | None, note: str | None = None) -> None:
     """Record (or clear, if status is None/empty) the writer's decision on a
-    comment. This is the writer's own call, never set by the AI."""
+    comment, plus an optional free-text note -- e.g. "accepted, edited
+    directly in the document" or "replied in Word". This is the writer's
+    own call, never set by the AI. Clearing the status clears the note too,
+    since a note only makes sense attached to a decision."""
+    note = (note or "").strip() or None
     if not status:
         conn.execute("DELETE FROM resolutions WHERE comment_id = ?", (comment_id,))
     else:
         conn.execute(
             """
-            INSERT INTO resolutions (comment_id, status, updated_at)
-            VALUES (?, ?, ?)
+            INSERT INTO resolutions (comment_id, status, note, updated_at)
+            VALUES (?, ?, ?, ?)
             ON CONFLICT(comment_id) DO UPDATE SET
                 status = excluded.status,
+                note = excluded.note,
                 updated_at = excluded.updated_at
             """,
-            (comment_id, status, datetime.now(timezone.utc).isoformat()),
+            (comment_id, status, note, datetime.now(timezone.utc).isoformat()),
         )
     conn.commit()
 

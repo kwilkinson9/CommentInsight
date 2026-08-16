@@ -101,6 +101,33 @@ class BuildReportTests(unittest.TestCase):
         self.assertIn("James Okafor", text)
         self.assertIn("They disagree about causality.", text)
 
+    def test_resolution_note_included_for_both_priority_and_table_comments(self):
+        document = {"filename": "sample.docx"}
+        comments = [
+            {
+                "id": 1, "author": "Priya Patel", "comment_date": None, "section": None,
+                "category": "Decision Required", "resolution_status": "crm",
+                "resolution_note": "Flagging for the CRM, needs biostats input.",
+                "parent_author": None, "text": "Needs team sign-off.", "rationale": None,
+                "anchor_text": None, "conflicts": [],
+            },
+            {
+                "id": 2, "author": "Lisa Wong", "comment_date": None, "section": None,
+                "category": "Editorial", "resolution_status": "accepted",
+                "resolution_note": "Edited directly in the document.",
+                "parent_author": None, "text": "Just a wording fix.", "rationale": None,
+                "anchor_text": None, "conflicts": [],
+            },
+        ]
+
+        content = reports.build_report(document, comments)
+        text = "\n".join(_paragraph_texts(content))
+        self.assertIn("Flagging for the CRM, needs biostats input.", text)
+
+        doc = DocxDocument(io.BytesIO(content))
+        table_text = " ".join(cell.text for row in doc.tables[0].rows for cell in row.cells)
+        self.assertIn("Edited directly in the document.", table_text)
+
     def test_handles_no_comments(self):
         content = reports.build_report({"filename": "empty.docx"}, [])
         text = "\n".join(_paragraph_texts(content))

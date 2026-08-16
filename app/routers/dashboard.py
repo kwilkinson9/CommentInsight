@@ -347,10 +347,11 @@ async def set_resolution(
 
     form = await request.form()
     status = (form.get("status") or "").strip() or None
+    note = form.get("note")
     if status is not None and status not in storage.RESOLUTION_STATUSES:
         raise HTTPException(status_code=400, detail="Unrecognized resolution status.")
 
-    storage.save_resolution(conn, comment_id, status)
+    storage.save_resolution(conn, comment_id, status, note)
 
     next_url = form.get("next") or f"/documents/{document_id}"
     return RedirectResponse(next_url, status_code=303)

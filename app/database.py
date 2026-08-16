@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS resolutions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     comment_id INTEGER NOT NULL REFERENCES comments(id),
     status TEXT NOT NULL,
+    note TEXT,
     updated_at TEXT NOT NULL,
     UNIQUE(comment_id)
 );
@@ -70,6 +71,17 @@ CREATE TABLE IF NOT EXISTS analysis_insights (
 """
 
 
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Adds columns introduced after a table already shipped -- CREATE TABLE
+    IF NOT EXISTS in SCHEMA only helps installs starting fresh, so anyone
+    with an existing database.db needs these ALTER TABLEs to pick up new
+    columns without losing their data."""
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(resolutions)").fetchall()}
+    if "note" not in columns:
+        conn.execute("ALTER TABLE resolutions ADD COLUMN note TEXT")
+    conn.commit()
+
+
 def get_connection(db_path: Path | str = DB_PATH) -> sqlite3.Connection:
     db_path = Path(db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -77,6 +89,7 @@ def get_connection(db_path: Path | str = DB_PATH) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(SCHEMA)
+    _migrate(conn)
     return conn
 
 

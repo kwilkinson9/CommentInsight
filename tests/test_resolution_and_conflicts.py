@@ -122,6 +122,46 @@ class ResolutionAndConflictTests(unittest.TestCase):
         resp = self.client.post(f"/documents/1/comments/{comment_id}/resolution", data={"status": "maybe"})
         self.assertEqual(resp.status_code, 400)
 
+    def test_setting_a_resolution_note_alongside_status(self):
+        self._upload_sample()
+        comment_id = self._db_id_for_external_id("0")
+
+        resp = self.client.post(
+            f"/documents/1/comments/{comment_id}/resolution",
+            data={"status": "accepted", "note": "Edited directly in the document.", "next": "/documents/1"},
+        )
+        self.assertEqual(resp.status_code, 303)
+
+        page = self.client.get("/documents/1")
+        self.assertIn("Edited directly in the document.", page.text)
+
+    def test_updating_the_note_without_changing_status(self):
+        self._upload_sample()
+        comment_id = self._db_id_for_external_id("0")
+        self.client.post(f"/documents/1/comments/{comment_id}/resolution", data={"status": "crm", "note": "First note."})
+
+        self.client.post(f"/documents/1/comments/{comment_id}/resolution", data={"status": "crm", "note": "Updated note."})
+
+        comments = self.client.get("/api/documents/1/comments").json()
+        comment = next(c for c in comments if c["id"] == comment_id)
+        self.assertEqual(comment["resolution_status"], "crm")
+
+        page = self.client.get("/documents/1")
+        self.assertIn("Updated note.", page.text)
+        self.assertNotIn("First note.", page.text)
+
+    def test_clearing_a_resolution_status_also_clears_the_note(self):
+        self._upload_sample()
+        comment_id = self._db_id_for_external_id("0")
+        self.client.post(f"/documents/1/comments/{comment_id}/resolution", data={"status": "rejected", "note": "Reviewer overruled."})
+
+        self.client.post(f"/documents/1/comments/{comment_id}/resolution", data={"status": ""})
+
+        comments = self.client.get("/api/documents/1/comments").json()
+        comment = next(c for c in comments if c["id"] == comment_id)
+        self.assertIsNone(comment["resolution_status"])
+        self.assertIsNone(comment["resolution_note"])
+
     # --- Conflict detection --------------------------------------------------
 
     def test_detect_conflicts_flags_both_sides_of_a_pair(self):

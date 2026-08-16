@@ -106,6 +106,9 @@ def _add_comment_block(doc: Document, comment: dict) -> None:
     category = comment.get("category") or "Not classified"
     status_label = storage.RESOLUTION_LABELS.get(comment.get("resolution_status"), "No decision yet")
     _muted(meta, f"Category: {category}    |    Resolution: {status_label}")
+    if comment.get("resolution_note"):
+        note_p = doc.add_paragraph()
+        _muted(note_p, f"Note: {comment['resolution_note']}", italic=True)
 
     if comment.get("parent_author"):
         reply = doc.add_paragraph()
@@ -171,9 +174,9 @@ def build_report(document: dict, comments: list[dict]) -> bytes:
 
     if other_comments:
         _add_section_heading(doc, "Other Comments")
-        table = doc.add_table(rows=1, cols=5)
+        table = doc.add_table(rows=1, cols=6)
         table.style = "Table Grid"
-        headers = ["Reviewer", "Category", "Comment", "Document Text", "Resolution"]
+        headers = ["Reviewer", "Category", "Comment", "Document Text", "Resolution", "Note"]
         for cell, text in zip(table.rows[0].cells, headers):
             cell.text = text
             cell.paragraphs[0].runs[0].bold = True
@@ -186,6 +189,7 @@ def build_report(document: dict, comments: list[dict]) -> bytes:
             row[2].text = comment["text"]
             row[3].text = comment.get("anchor_text") or ""
             row[4].text = storage.RESOLUTION_LABELS.get(comment.get("resolution_status"), "No decision yet")
+            row[5].text = comment.get("resolution_note") or ""
 
     _add_credit_footer(doc)
 

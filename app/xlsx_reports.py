@@ -88,7 +88,7 @@ def build_workbook(
     _write_header_row(
         all_comments_sheet,
         ["Document", "Reviewer", "Date", "Section", "Category", "Priority",
-         "Comment", "Document Text", "Resolution"],
+         "Comment", "Document Text", "Resolution", "Resolution Note"],
     )
     wrap = Alignment(wrap_text=True, vertical="top")
     for row_num, comment in enumerate(all_comments, start=2):
@@ -107,7 +107,9 @@ def build_workbook(
             column=9,
             value=storage.RESOLUTION_LABELS.get(comment.get("resolution_status"), "No decision yet"),
         )
-    _autosize_columns(all_comments_sheet, [22, 24, 18, 24, 18, 9, 50, 40, 18])
+        note_cell = all_comments_sheet.cell(row=row_num, column=10, value=comment.get("resolution_note") or "")
+        note_cell.alignment = wrap
+    _autosize_columns(all_comments_sheet, [22, 24, 18, 24, 18, 9, 50, 40, 18, 30])
 
     buffer = io.BytesIO()
     wb.save(buffer)
