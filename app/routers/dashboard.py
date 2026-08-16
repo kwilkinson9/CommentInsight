@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from app import reports, storage
+from app import charts, reports, storage
 from app.ai.anthropic_classifier import AnthropicClassifier
 from app.ai.anthropic_conflict_detector import AnthropicConflictDetector
 from app.ai.base import Classifier, ConflictDetector
@@ -82,12 +82,15 @@ def _document_context(
         {k: v for k, v in {"q": q, "author": author, "category": category, "sort": sort}.items() if v}
     )
 
+    all_comments = storage.list_comments(conn, document_id)
+
     return {
         "document": document,
         "comments": comments,
-        "total_count": len(storage.list_comments(conn, document_id)),
+        "total_count": len(all_comments),
         "unclassified_count": len(storage.list_unclassified_comments(conn, document_id)),
         "conflict_count": sum(1 for c in comments if c["conflict_count"] > 0) if comments else 0,
+        "chart_rows": charts.category_breakdown(all_comments),
         "authors": storage.list_authors(conn, document_id),
         "categories": storage.list_categories(conn, document_id),
         "resolution_statuses": storage.RESOLUTION_STATUSES,
