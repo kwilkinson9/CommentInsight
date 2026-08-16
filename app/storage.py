@@ -108,16 +108,30 @@ def get_document(conn: sqlite3.Connection, document_id: int) -> dict | None:
     return dict(row) if row else None
 
 
+SORT_OPTIONS = {
+    "document": "c.id",
+    "date": "c.comment_date IS NULL, c.comment_date, c.id",
+    "reviewer": "c.author COLLATE NOCASE, c.id",
+}
+DEFAULT_SORT = "document"
+
+
 def list_comments(
     conn: sqlite3.Connection,
     document_id: int,
     q: str | None = None,
     author: str | None = None,
+    sort: str = DEFAULT_SORT,
 ) -> list[dict]:
     """List comments for a document, optionally filtered by a free-text
     search (matches comment text, anchored text, or paragraph context) and/or
     an exact author match. Each row also carries parent_author, the display
     name of the comment it's replying to (or None for a top-level comment).
+
+    `sort` picks the ordering: "document" (as it appears in the file, the
+    default), "date", or "reviewer". An unrecognized value falls back to the
+    default rather than erroring, since it only ever comes from a URL query
+    string that a user could hand-edit.
     """
     sql = """
         SELECT c.*, p.author AS parent_author
@@ -136,7 +150,7 @@ def list_comments(
         sql += " AND c.author = ?"
         params.append(author)
 
-    sql += " ORDER BY c.id"
+    sql += " ORDER BY " + SORT_OPTIONS.get(sort, SORT_OPTIONS[DEFAULT_SORT])
 
     rows = conn.execute(sql, params).fetchall()
     return [dict(row) for row in rows]

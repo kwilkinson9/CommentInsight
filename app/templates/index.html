@@ -29,7 +29,7 @@
         {% for doc in documents %}
           <tr>
             <td><a href="/documents/{{ doc.id }}">{{ doc.filename }}</a></td>
-            <td class="muted">{{ doc.uploaded_at }}</td>
+            <td class="muted">{{ doc.uploaded_at|friendly_date }}</td>
             <td>{{ doc.comment_count }}</td>
           </tr>
         {% endfor %}

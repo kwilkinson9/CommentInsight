@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
@@ -12,6 +13,25 @@ from app.database import get_db
 
 router = APIRouter(tags=["dashboard"])
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
+
+
+def friendly_date(value: str | None) -> str:
+    """Render an ISO timestamp (e.g. from python-docx or datetime.isoformat)
+    as something readable, in the server's local time zone. Falls back to
+    the raw value for anything that doesn't parse -- this only ever feeds a
+    template, so it should never be the reason a page fails to render."""
+    if not value:
+        return ""
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone()
+    except ValueError:
+        return value
+    hour_12 = dt.hour % 12 or 12
+    am_pm = "AM" if dt.hour < 12 else "PM"
+    return f"{dt.strftime('%b')} {dt.day}, {dt.year}, {hour_12}:{dt.minute:02d} {am_pm}"
+
+
+templates.env.filters["friendly_date"] = friendly_date
 
 
 @router.get("/")
@@ -46,6 +66,7 @@ def view_document(
     request: Request,
     q: str | None = None,
     author: str | None = None,
+    sort: str = storage.DEFAULT_SORT,
     conn: sqlite3.Connection = Depends(get_db),
 ):
     document = storage.get_document(conn, document_id)
@@ -57,10 +78,11 @@ def view_document(
         "document.html",
         {
             "document": document,
-            "comments": storage.list_comments(conn, document_id, q=q, author=author),
+            "comments": storage.list_comments(conn, document_id, q=q, author=author, sort=sort),
             "total_count": len(storage.list_comments(conn, document_id)),
             "authors": storage.list_authors(conn, document_id),
             "q": q,
             "author": author,
+            "sort": sort,
         },
     )
