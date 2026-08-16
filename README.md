@@ -47,6 +47,34 @@ Then open **http://127.0.0.1:8000** in your browser. Leave the terminal window
 open while you're using the app -- closing it stops the server. To stop it on
 purpose, click into the terminal and press `Ctrl+C`.
 
+If you'd rather not open a terminal every time, see **Always-on setup
+(Windows)** below -- it starts the server automatically whenever you log in.
+
+## Always-on setup (Windows)
+
+This sets the server up to start automatically, hidden in the background,
+every time you log in to Windows -- no cmd prompt needed. It runs while
+you're logged in to your computer; it's not a cloud server, so it doesn't run
+when your computer is off. (Hosting this somewhere that's reachable even when
+your computer is off is a bigger step -- see `SECURITY.md` for why that's not
+set up yet.)
+
+One-time setup, after you've done the first-time setup above:
+
+1. In File Explorer, go to `CommentInsight\scripts\windows`.
+2. Double-click **`install_startup_task.bat`**. A window will flash up,
+   confirm, and start the server right away.
+3. Open **http://127.0.0.1:8000** to confirm it's running.
+
+From now on, the server starts by itself whenever you log in -- just open
+that same address in your browser.
+
+**Other scripts in that folder:**
+- **`stop_server.bat`** -- stops the server if it's currently running.
+  Use this before an update (see below), or any time you want it off.
+- **`uninstall_startup_task.bat`** -- removes the auto-start. Run
+  `stop_server.bat` too if it's currently running.
+
 ## Getting updates
 
 When you're told there's a new version to pick up:
@@ -62,6 +90,10 @@ pip install -r requirements.txt
 and picks up any new dependencies if something did. Your uploaded documents
 and all your classification/resolution work are untouched by an update; that
 data lives in `data/`, which isn't part of the repo.
+
+If you're using the always-on setup, the running server won't pick up an
+update by itself -- run `stop_server.bat`, then either double-click
+`run_server.bat` or just log out and back in to let it restart itself.
 
 ## Your data
 
