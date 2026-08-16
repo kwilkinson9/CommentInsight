@@ -2,6 +2,35 @@
 {% block title %}Comment Insight{% endblock %}
 {% block content %}
   <h1>Upload a document</h1>
+  <p class="muted">
+    Upload a Word document with reviewer comments still attached. Comment Insight
+    sorts them, classifies each one, flags disagreements between reviewers, and
+    lets you record a decision on each &mdash; then exports the whole thing as a
+    report for your comment resolution meeting.
+  </p>
+
+  <div class="how-it-works">
+    <div class="how-it-works-step">
+      <span class="step-number">1</span>
+      <h3>Upload a .docx</h3>
+      <p>Add a Word file with reviewer comments still attached.</p>
+    </div>
+    <div class="how-it-works-step">
+      <span class="step-number">2</span>
+      <h3>Classify &amp; flag</h3>
+      <p>AI sorts each comment into a category and flags anything that needs team input or looks like a disagreement.</p>
+    </div>
+    <div class="how-it-works-step">
+      <span class="step-number">3</span>
+      <h3>Resolve each one</h3>
+      <p>Mark each comment Accepted, Rejected, or CRM (needs a meeting) as you work through it.</p>
+    </div>
+    <div class="how-it-works-step">
+      <span class="step-number">4</span>
+      <h3>Export the report</h3>
+      <p>Download a Word summary to bring into the comment resolution meeting.</p>
+    </div>
+  </div>
 
   {% if error %}
     <div class="error">{{ error }}</div>
