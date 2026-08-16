@@ -114,6 +114,7 @@ def _document_context(
     category: str | None = None,
     sort: str = storage.DEFAULT_SORT,
     error: str | None = None,
+    revision_summary: dict | None = None,
 ) -> dict:
     document = storage.get_document(conn, document_id)
     if document is None:
@@ -150,6 +151,7 @@ def _document_context(
         "sort": sort,
         "current_query": current_query,
         "error": error,
+        "revision_summary": revision_summary,
     }
 
 
@@ -267,10 +269,56 @@ def view_document(
     author: str | None = None,
     category: str | None = None,
     sort: str = storage.DEFAULT_SORT,
+    revised_carried: int | None = None,
+    revised_new: int | None = None,
+    revised_removed: int | None = None,
     conn: sqlite3.Connection = Depends(get_db),
 ):
-    context = _document_context(conn, document_id, q=q, author=author, category=category, sort=sort)
+    revision_summary = None
+    if revised_carried is not None:
+        revision_summary = {"carried_forward": revised_carried, "new_comments": revised_new, "removed_comments": revised_removed}
+    context = _document_context(conn, document_id, q=q, author=author, category=category, sort=sort, revision_summary=revision_summary)
     return templates.TemplateResponse(request, "document.html", context)
+
+
+@router.post("/documents/{document_id}/revise")
+async def revise_document(
+    document_id: int,
+    request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
+):
+    """Swaps in a revised .docx for an existing document, carrying forward
+    classification/resolution decisions for comments that match one from
+    before -- see storage.replace_document_with_revision()."""
+    if storage.get_document(conn, document_id) is None:
+        raise HTTPException(status_code=404, detail="Document not found.")
+
+    form = await request.form()
+    file: UploadFile | None = form.get("file")
+    if file is None or not file.filename:
+        return templates.TemplateResponse(
+            request,
+            "document.html",
+            _document_context(conn, document_id, error="Please choose a .docx file to upload as the revision."),
+            status_code=400,
+        )
+
+    content = await file.read()
+    try:
+        summary = storage.replace_document_with_revision(conn, document_id, file.filename, content)
+    except ValueError as exc:
+        return templates.TemplateResponse(
+            request,
+            "document.html",
+            _document_context(conn, document_id, error=str(exc)),
+            status_code=400,
+        )
+
+    redirect_url = (
+        f"/documents/{document_id}?revised_carried={summary['carried_forward']}"
+        f"&revised_new={summary['new_comments']}&revised_removed={summary['removed_comments']}"
+    )
+    return RedirectResponse(redirect_url, status_code=303)
 
 
 @router.get("/documents/{document_id}/export")

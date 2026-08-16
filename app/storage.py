@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+import tempfile
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -54,13 +55,15 @@ def save_document(conn: sqlite3.Connection, filename: str, content: bytes) -> tu
     return document_id, saved_path
 
 
-def save_comments(conn: sqlite3.Connection, document_id: int, comments: list[Comment]) -> None:
+def save_comments(conn: sqlite3.Connection, document_id: int, comments: list[Comment]) -> dict[str, int]:
     """Insert comments for a document, resolving reply-thread parent links.
 
     Comment.parent_id refers to another comment's docx-native id
     (unique only within the same document), not a database row id, so
     parent links are resolved in a second pass once every comment in this
-    batch has a database id to point to.
+    batch has a database id to point to. Returns the external_id -> db id
+    mapping, which replace_document_with_revision() uses to reapply carried-
+    forward decisions onto the newly-inserted rows.
     """
     external_to_db_id: dict[str, int] = {}
 
@@ -88,6 +91,7 @@ def save_comments(conn: sqlite3.Connection, document_id: int, comments: list[Com
             )
 
     conn.commit()
+    return external_to_db_id
 
 
 def list_documents(conn: sqlite3.Connection) -> list[dict]:
@@ -108,16 +112,14 @@ def get_document(conn: sqlite3.Connection, document_id: int) -> dict | None:
     return dict(row) if row else None
 
 
-def delete_document(conn: sqlite3.Connection, document_id: int) -> bool:
-    """Delete a document and everything derived from it (conflicts,
-    resolutions, classifications, comments) plus the uploaded file on disk.
-    Returns False if the document didn't exist, True otherwise. Deletion
-    order matters -- foreign keys are enforced (PRAGMA foreign_keys = ON in
-    database.py), so children go before parents."""
-    document = get_document(conn, document_id)
-    if document is None:
-        return False
-
+def _delete_comments_and_derived_data(conn: sqlite3.Connection, document_id: int) -> None:
+    """Deletes every comment for a document plus everything derived from
+    them (conflicts, resolutions, classifications) -- but not the document
+    row itself. Shared by delete_document (which also removes the document)
+    and replace_document_with_revision (which keeps the document but swaps
+    its comments for a freshly re-extracted set). Deletion order matters --
+    foreign keys are enforced (PRAGMA foreign_keys = ON in database.py), so
+    children go before parents."""
     conn.execute("DELETE FROM conflicts WHERE document_id = ?", (document_id,))
     conn.execute(
         "DELETE FROM resolutions WHERE comment_id IN (SELECT id FROM comments WHERE document_id = ?)",
@@ -128,6 +130,18 @@ def delete_document(conn: sqlite3.Connection, document_id: int) -> bool:
         (document_id,),
     )
     conn.execute("DELETE FROM comments WHERE document_id = ?", (document_id,))
+    conn.commit()
+
+
+def delete_document(conn: sqlite3.Connection, document_id: int) -> bool:
+    """Delete a document and everything derived from it, plus the uploaded
+    file on disk. Returns False if the document didn't exist, True
+    otherwise."""
+    document = get_document(conn, document_id)
+    if document is None:
+        return False
+
+    _delete_comments_and_derived_data(conn, document_id)
     conn.execute("DELETE FROM documents WHERE id = ?", (document_id,))
     conn.commit()
 
@@ -136,6 +150,83 @@ def delete_document(conn: sqlite3.Connection, document_id: int) -> bool:
     saved_path.unlink(missing_ok=True)
 
     return True
+
+
+def replace_document_with_revision(conn: sqlite3.Connection, document_id: int, filename: str, content: bytes) -> dict:
+    """Re-extracts comments from a revised .docx and swaps them in, carrying
+    forward each comment's classification/resolution/note wherever the new
+    file has a comment from the same reviewer with identical text -- the one
+    signal that survives a re-save, since Word's own comment numbering and
+    this app's external ids aren't stable across saves. A comment with no
+    match in the new file starts fresh (unclassified, no resolution); an old
+    comment that doesn't appear in the new file at all -- e.g. a reviewer
+    resolved or deleted it in Word -- is dropped.
+
+    Keeps the same document_id, so every link, chart, and export that
+    already points at this document keeps working; only the filename,
+    upload timestamp, and comments change. Raises ValueError (safe to show
+    a user) if the new file can't be read as a .docx, or the document
+    doesn't exist.
+
+    Returns {"carried_forward": n, "new_comments": n, "removed_comments": n}
+    so the caller can tell the writer what happened to their prior work.
+    """
+    document = get_document(conn, document_id)
+    if document is None:
+        raise ValueError("Document not found.")
+    if not filename.lower().endswith(".docx"):
+        raise ValueError("Only .docx files are supported.")
+
+    with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
+        tmp.write(content)
+        tmp_path = Path(tmp.name)
+    try:
+        try:
+            new_comments = extract_comments(tmp_path)
+        except (zipfile.BadZipFile, ValueError) as exc:
+            raise ValueError(f"Could not read {filename}: {exc}") from exc
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    old_comments = list_comments(conn, document_id)
+    old_by_key: dict[tuple[str, str], list[dict]] = {}
+    for old in old_comments:
+        old_by_key.setdefault((old["author"] or "", old["text"]), []).append(old)
+
+    carry_forward: dict[str, dict] = {}
+    for new in new_comments:
+        bucket = old_by_key.get((new.author or "", new.text))
+        if bucket:
+            carry_forward[new.id] = bucket.pop(0)
+
+    carried_count = len(carry_forward)
+    removed_count = sum(len(bucket) for bucket in old_by_key.values())
+    new_count = len(new_comments) - carried_count
+
+    old_safe_name = Path(document["filename"]).name
+    (UPLOAD_DIR / f"{document_id}_{old_safe_name}").unlink(missing_ok=True)
+
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    new_safe_name = Path(filename).name
+    (UPLOAD_DIR / f"{document_id}_{new_safe_name}").write_bytes(content)
+
+    conn.execute(
+        "UPDATE documents SET filename = ?, uploaded_at = ? WHERE id = ?",
+        (filename, datetime.now(timezone.utc).isoformat(), document_id),
+    )
+    conn.commit()
+
+    _delete_comments_and_derived_data(conn, document_id)
+    external_to_db_id = save_comments(conn, document_id, new_comments)
+
+    for external_id, old in carry_forward.items():
+        db_id = external_to_db_id[external_id]
+        if old.get("category"):
+            save_classification(conn, db_id, old["category"], old["rationale"], "carried-forward")
+        if old.get("resolution_status"):
+            save_resolution(conn, db_id, old["resolution_status"], old.get("resolution_note"))
+
+    return {"carried_forward": carried_count, "new_comments": new_count, "removed_comments": removed_count}
 
 
 SORT_OPTIONS = {

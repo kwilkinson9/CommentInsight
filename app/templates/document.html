@@ -17,6 +17,24 @@
     <div class="error">{{ error }}</div>
   {% endif %}
 
+  {% if revision_summary %}
+    <div class="success">
+      Revised version uploaded &mdash;
+      {{ revision_summary.carried_forward }} comment{{ "" if revision_summary.carried_forward == 1 else "s" }} kept their category/resolution,
+      {{ revision_summary.new_comments }} new comment{{ "" if revision_summary.new_comments == 1 else "s" }} added{% if revision_summary.removed_comments %},
+      {{ revision_summary.removed_comments }} no longer in the document{% endif %}.
+    </div>
+  {% endif %}
+
+  <form class="filters" method="post" action="/documents/{{ document.id }}/revise" enctype="multipart/form-data">
+    <div>
+      <label for="revision-file">Upload a revised version of this document</label>
+      <input type="file" id="revision-file" name="file" accept=".docx" required>
+    </div>
+    <button type="submit">Replace with revision</button>
+    <span class="muted">Matches comments by reviewer + text to carry forward category and resolution decisions. Comments no longer present are removed.</span>
+  </form>
+
   {% if total_count > 0 %}
     <form class="filters" method="post" action="/documents/{{ document.id }}/classify">
       <input type="hidden" name="next" value="/documents/{{ document.id }}{{ '?' + current_query if current_query else '' }}">
