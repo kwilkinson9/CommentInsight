@@ -91,6 +91,7 @@ def _document_context(
         "unclassified_count": len(storage.list_unclassified_comments(conn, document_id)),
         "conflict_count": sum(1 for c in comments if c["conflict_count"] > 0) if comments else 0,
         "chart_rows": charts.category_breakdown(all_comments),
+        "resolution_chart_rows": charts.resolution_breakdown(all_comments),
         "authors": storage.list_authors(conn, document_id),
         "categories": storage.list_categories(conn, document_id),
         "resolution_statuses": storage.RESOLUTION_STATUSES,

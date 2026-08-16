@@ -1,5 +1,5 @@
-"""Tests for the category-breakdown chart data (app/charts.py) -- plain
-dicts in, plain numbers out, no DB/HTTP involved."""
+"""Tests for the chart data functions in app/charts.py -- plain dicts in,
+plain numbers out, no DB/HTTP involved."""
 
 import pathlib
 import sys
@@ -65,6 +65,40 @@ class CategoryBreakdownTests(unittest.TestCase):
         color_b = {r["label"]: r["color"] for r in rows_b}
         self.assertEqual(color_a["Editorial"], color_b["Editorial"])
         self.assertEqual(color_a["Other"], color_b["Other"])
+
+
+class ResolutionBreakdownTests(unittest.TestCase):
+    def test_counts_each_status_and_no_decision(self):
+        comments = [
+            {"resolution_status": "accepted"},
+            {"resolution_status": "accepted"},
+            {"resolution_status": "crm"},
+            {"resolution_status": None},
+        ]
+        rows = charts.resolution_breakdown(comments)
+        by_label = {row["label"]: row["count"] for row in rows}
+
+        self.assertEqual(by_label["Accepted"], 2)
+        self.assertEqual(by_label["CRM (needs meeting)"], 1)
+        self.assertEqual(by_label["No decision yet"], 1)
+        self.assertEqual(by_label["Rejected"], 0)
+
+    def test_no_decision_row_omitted_when_everything_is_resolved(self):
+        comments = [{"resolution_status": "accepted"}, {"resolution_status": "rejected"}]
+        rows = charts.resolution_breakdown(comments)
+        labels = [row["label"] for row in rows]
+        self.assertNotIn("No decision yet", labels)
+
+    def test_empty_document_has_every_status_at_zero_no_crash(self):
+        rows = charts.resolution_breakdown([])
+        self.assertEqual(len(rows), 3)
+        self.assertTrue(all(row["count"] == 0 and row["bar_width"] == 0 for row in rows))
+
+    def test_sorted_by_count_descending(self):
+        comments = [{"resolution_status": "crm"}] * 2 + [{"resolution_status": "accepted"}] * 5
+        rows = charts.resolution_breakdown(comments)
+        counts = [row["count"] for row in rows]
+        self.assertEqual(counts, sorted(counts, reverse=True))
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-"""Data for the "comments by category" chart on the document page.
+"""Data for the small "comments by X" charts on the document page.
 
 No JS chart library -- the app stays server-rendered HTML, so this module
 only computes plain numbers (label / count / color / bar length). The
@@ -7,6 +7,7 @@ actual <svg> markup lives in the document template.
 
 from __future__ import annotations
 
+from app import storage
 from app.ai.base import CATEGORIES
 
 # A validated categorical palette (checked for colorblind-safe adjacent
@@ -26,7 +27,28 @@ _CATEGORY_COLORS = {
 _NOT_CLASSIFIED_LABEL = "Not classified"
 _NOT_CLASSIFIED_COLOR = "#c3c2b7"
 
+# Resolution status is a state, not an identity, so it wears status colors
+# (good / pending) rather than the categorical palette -- accepted reads as
+# a settled positive outcome, CRM as something still needing action.
+# Rejected isn't a "bad" outcome here (just a different editorial decision),
+# so it gets the app's own neutral ink color rather than a status red.
+_RESOLUTION_COLORS = {
+    "accepted": "#0ca30c",
+    "rejected": "#6b7280",
+    "crm": "#fab219",
+}
+_NO_DECISION_LABEL = "No decision yet"
+_NO_DECISION_COLOR = "#c3c2b7"
+
 CHART_BAR_MAX_WIDTH = 360  # logical SVG units; must match document.html's layout
+
+
+def _scale_and_sort(rows: list[dict]) -> list[dict]:
+    max_count = max((row["count"] for row in rows), default=0)
+    for row in rows:
+        row["bar_width"] = (row["count"] / max_count * CHART_BAR_MAX_WIDTH) if max_count else 0.0
+    rows.sort(key=lambda row: row["count"], reverse=True)
+    return rows
 
 
 def category_breakdown(comments: list[dict]) -> list[dict]:
@@ -51,9 +73,27 @@ def category_breakdown(comments: list[dict]) -> list[dict]:
     if not_classified:
         rows.append({"label": _NOT_CLASSIFIED_LABEL, "count": not_classified, "color": _NOT_CLASSIFIED_COLOR})
 
-    max_count = max((row["count"] for row in rows), default=0)
-    for row in rows:
-        row["bar_width"] = (row["count"] / max_count * CHART_BAR_MAX_WIDTH) if max_count else 0.0
+    return _scale_and_sort(rows)
 
-    rows.sort(key=lambda row: row["count"], reverse=True)
-    return rows
+
+def resolution_breakdown(comments: list[dict]) -> list[dict]:
+    """One row per resolution status (accepted / rejected / crm, always all
+    three even at zero) plus "No decision yet" when any comments are still
+    unresolved. Same shape and scaling as category_breakdown."""
+    counts: dict[str, int] = {status: 0 for status in storage.RESOLUTION_STATUSES}
+    no_decision = 0
+    for comment in comments:
+        status = comment.get("resolution_status")
+        if status in counts:
+            counts[status] += 1
+        else:
+            no_decision += 1
+
+    rows = [
+        {"label": storage.RESOLUTION_LABELS[status], "count": count, "color": _RESOLUTION_COLORS[status]}
+        for status, count in counts.items()
+    ]
+    if no_decision:
+        rows.append({"label": _NO_DECISION_LABEL, "count": no_decision, "color": _NO_DECISION_COLOR})
+
+    return _scale_and_sort(rows)

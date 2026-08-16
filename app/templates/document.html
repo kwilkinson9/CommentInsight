@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_macros.html" as macros %}
 {% block title %}{{ document.filename }} - Comment Insight{% endblock %}
 {% block content %}
   <p><a href="/">&larr; All documents</a></p>
@@ -39,25 +40,8 @@
   {% endif %}
 
   {% if total_count > 0 %}
-    <div class="chart-card">
-      <h3>Comments by category</h3>
-      <svg viewBox="0 0 600 {{ chart_rows|length * 28 + 20 }}" role="img" aria-label="Comment counts by category" class="category-chart">
-        {% for row in chart_rows %}
-          {% set y = 10 + loop.index0 * 28 %}
-          {% set bar_w = row.bar_width %}
-          <text x="4" y="{{ y + 12 }}" class="chart-row-label">{{ row.label }}</text>
-          {% if row.count > 0 %}
-            {% if bar_w >= 8 %}
-              <rect x="{{ 182 + bar_w - 8 }}" y="{{ y }}" width="8" height="16" rx="4" fill="{{ row.color }}"><title>{{ row.label }}: {{ row.count }}</title></rect>
-              <rect x="182" y="{{ y }}" width="{{ bar_w - 4 }}" height="16" fill="{{ row.color }}"><title>{{ row.label }}: {{ row.count }}</title></rect>
-            {% else %}
-              <rect x="182" y="{{ y }}" width="{{ [bar_w, 4]|max }}" height="16" rx="2" fill="{{ row.color }}"><title>{{ row.label }}: {{ row.count }}</title></rect>
-            {% endif %}
-          {% endif %}
-          <text x="{{ 182 + bar_w + 10 }}" y="{{ y + 12 }}" class="chart-value-label">{{ row.count }}</text>
-        {% endfor %}
-      </svg>
-    </div>
+    {{ macros.bar_chart("Comments by category", chart_rows, "Comment counts by category") }}
+    {{ macros.bar_chart("Comments by resolution status", resolution_chart_rows, "Comment counts by resolution status") }}
   {% endif %}
 
   {% if total_count > 0 %}
