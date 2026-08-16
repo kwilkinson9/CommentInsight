@@ -32,5 +32,7 @@ class Classification:
 
 
 class Classifier(ABC):
+    model_name: str
+
     @abstractmethod
     def classify(self, comment: Comment) -> Classification: ...

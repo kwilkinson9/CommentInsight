@@ -5,6 +5,21 @@
   <h1>{{ document.filename }}</h1>
   <p class="muted">Uploaded {{ document.uploaded_at|friendly_date }} &middot; {{ total_count }} comment{{ "" if total_count == 1 else "s" }} total</p>
 
+  {% if error %}
+    <div class="error">{{ error }}</div>
+  {% endif %}
+
+  {% if total_count > 0 %}
+    <form class="filters" method="post" action="/documents/{{ document.id }}/classify">
+      {% if unclassified_count > 0 %}
+        <span class="muted">{{ total_count - unclassified_count }} of {{ total_count }} comments classified</span>
+        <button type="submit">Classify {{ unclassified_count }} remaining comment{{ "" if unclassified_count == 1 else "s" }}</button>
+      {% else %}
+        <span class="muted">All {{ total_count }} comments classified</span>
+      {% endif %}
+    </form>
+  {% endif %}
+
   {% if total_count > 0 %}
     <form class="filters" method="get" action="/documents/{{ document.id }}">
       <div>
@@ -20,6 +35,17 @@
           {% endfor %}
         </select>
       </div>
+      {% if categories %}
+        <div>
+          <label for="category">Category</label>
+          <select id="category" name="category">
+            <option value="">All categories</option>
+            {% for cat in categories %}
+              <option value="{{ cat }}" {{ "selected" if cat == category else "" }}>{{ cat }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      {% endif %}
       <div>
         <label for="sort">Sort by</label>
         <select id="sort" name="sort">
@@ -29,13 +55,13 @@
         </select>
       </div>
       <button type="submit">Apply</button>
-      {% if q or author %}
+      {% if q or author or category %}
         <a class="button-link" href="/documents/{{ document.id }}">Clear filters</a>
       {% endif %}
     </form>
   {% endif %}
 
-  {% if q or author %}
+  {% if q or author or category %}
     <p class="muted">Showing {{ comments|length }} of {{ total_count }} comments</p>
   {% endif %}
 
@@ -48,6 +74,7 @@
           <th>Reviewer</th>
           <th>Date</th>
           <th>Location</th>
+          <th>Category</th>
           <th>Comment</th>
           <th>Document text</th>
         </tr>
@@ -58,6 +85,14 @@
             <td>{{ c.author }}</td>
             <td class="muted">{{ c.comment_date|friendly_date }}</td>
             <td>{% if c.section %}<span class="section-tag">{{ c.section }}</span>{% endif %}</td>
+            <td>
+              {% if c.category %}
+                <span class="category-tag {{ c.category|category_class }}">{{ c.category }}</span>
+                <div class="muted rationale">{{ c.rationale }}</div>
+              {% else %}
+                <span class="muted">Not classified</span>
+              {% endif %}
+            </td>
             <td>
               {% if c.parent_author %}
                 <span class="reply-tag">&#8618; reply to {{ c.parent_author }}</span><br>

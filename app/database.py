@@ -29,6 +29,16 @@ CREATE TABLE IF NOT EXISTS comments (
     parent_comment_id INTEGER REFERENCES comments(id),
     UNIQUE(document_id, external_id)
 );
+
+CREATE TABLE IF NOT EXISTS classifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    comment_id INTEGER NOT NULL REFERENCES comments(id),
+    category TEXT NOT NULL,
+    rationale TEXT NOT NULL,
+    model TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(comment_id)
+);
 """
 
 

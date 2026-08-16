@@ -76,6 +76,8 @@ _RESPONSE_SCHEMA = {
 
 
 class AnthropicClassifier(Classifier):
+    model_name = MODEL
+
     def __init__(self, client: anthropic.Anthropic | None = None):
         self.client = client or anthropic.Anthropic()
 

@@ -121,12 +121,14 @@ def list_comments(
     document_id: int,
     q: str | None = None,
     author: str | None = None,
+    category: str | None = None,
     sort: str = DEFAULT_SORT,
 ) -> list[dict]:
     """List comments for a document, optionally filtered by a free-text
-    search (matches comment text, anchored text, or paragraph context) and/or
-    an exact author match. Each row also carries parent_author, the display
-    name of the comment it's replying to (or None for a top-level comment).
+    search (matches comment text, anchored text, or paragraph context), an
+    exact author match, and/or an exact classification category. Each row
+    also carries parent_author (the name of the comment it's replying to, or
+    None) and, if classified, category and rationale (both None otherwise).
 
     `sort` picks the ordering: "document" (as it appears in the file, the
     default), "date", or "reviewer". An unrecognized value falls back to the
@@ -134,9 +136,10 @@ def list_comments(
     string that a user could hand-edit.
     """
     sql = """
-        SELECT c.*, p.author AS parent_author
+        SELECT c.*, p.author AS parent_author, cl.category AS category, cl.rationale AS rationale
         FROM comments c
         LEFT JOIN comments p ON c.parent_comment_id = p.id
+        LEFT JOIN classifications cl ON cl.comment_id = c.id
         WHERE c.document_id = ?
     """
     params: list = [document_id]
@@ -150,6 +153,10 @@ def list_comments(
         sql += " AND c.author = ?"
         params.append(author)
 
+    if category:
+        sql += " AND cl.category = ?"
+        params.append(category)
+
     sql += " ORDER BY " + SORT_OPTIONS.get(sort, SORT_OPTIONS[DEFAULT_SORT])
 
     rows = conn.execute(sql, params).fetchall()
@@ -162,3 +169,54 @@ def list_authors(conn: sqlite3.Connection, document_id: int) -> list[str]:
         (document_id,),
     ).fetchall()
     return [row["author"] for row in rows]
+
+
+def list_categories(conn: sqlite3.Connection, document_id: int) -> list[str]:
+    """Categories actually assigned so far in this document (not the full
+    fixed list) -- if nothing's been classified yet, this is empty."""
+    rows = conn.execute(
+        """
+        SELECT DISTINCT cl.category
+        FROM classifications cl
+        JOIN comments c ON c.id = cl.comment_id
+        WHERE c.document_id = ?
+        ORDER BY cl.category
+        """,
+        (document_id,),
+    ).fetchall()
+    return [row["category"] for row in rows]
+
+
+def list_unclassified_comments(conn: sqlite3.Connection, document_id: int) -> list[dict]:
+    rows = conn.execute(
+        """
+        SELECT c.* FROM comments c
+        LEFT JOIN classifications cl ON cl.comment_id = c.id
+        WHERE c.document_id = ? AND cl.id IS NULL
+        ORDER BY c.id
+        """,
+        (document_id,),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def save_classification(
+    conn: sqlite3.Connection, comment_id: int, category: str, rationale: str, model: str
+) -> None:
+    """Insert or replace this comment's classification. Re-running
+    classification on an already-classified comment overwrites the old
+    result rather than keeping history -- fine for now since there's only
+    ever one active classification per comment."""
+    conn.execute(
+        """
+        INSERT INTO classifications (comment_id, category, rationale, model, created_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(comment_id) DO UPDATE SET
+            category = excluded.category,
+            rationale = excluded.rationale,
+            model = excluded.model,
+            created_at = excluded.created_at
+        """,
+        (comment_id, category, rationale, model, datetime.now(timezone.utc).isoformat()),
+    )
+    conn.commit()
