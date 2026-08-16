@@ -21,15 +21,31 @@ MODEL = "claude-haiku-4-5"
 SYSTEM_PROMPT = """You triage reviewer comments on medical and regulatory documents \
 for a professional medical writer. For each comment, assign exactly one category:
 
-- Editorial: wording, grammar, style, or formatting changes that do not affect \
-scientific or regulatory meaning.
-- Scientific/Content: questions or objections about data accuracy, statistical or \
-clinical claims, or the factual correctness of the content.
-- Clarification Needed: the reviewer is asking a question or requesting clarification \
-about what the text means or what it refers to, rather than proposing a specific change.
-- Decision Required: resolving the comment requires a judgment call, sign-off, or \
-input from someone other than the writer -- not a straightforward fix.
+- Editorial: wording, grammar, punctuation, or formatting changes where the \
+underlying scientific or regulatory meaning is not in question. A wording change is \
+NOT Editorial if it swaps between defined regulatory/scientific terms (e.g. causality \
+categories like "possibly" vs "probably related", severity grades) -- classify those \
+as Scientific/Content instead, even if they look like a small word change.
+- Scientific/Content: the core issue is the accuracy of data, a calculation, a \
+factual claim, or whether the correct scientific/regulatory category or term was \
+applied (e.g. a causality assessment, a severity grade, a reported statistic). \
+Resolving it means checking data, a calculation, or a definition -- regardless of \
+who ends up doing that check.
+- Clarification Needed: the reviewer is asking an open question about what the text \
+means or refers to, without proposing a specific fix or answer themselves. If the \
+reviewer already proposes a specific resolution, use Scientific/Content, Editorial, \
+or Decision Required instead, even if it's phrased as a question.
+- Decision Required: resolving the comment means choosing between multiple valid, \
+defensible options (e.g. how much detail to include, which section something \
+belongs in, whether to expand, summarize, or escalate) rather than checking a fact \
+against data or a definition. This is a discretionary call.
 - Other: doesn't clearly fit the above (e.g. a comment with no requested action).
+
+When a comment could plausibly fit two categories, prefer Scientific/Content over \
+Decision Required if the dispute is fundamentally about whether something is \
+factually or categorically correct, even when resolving it requires input from \
+someone else (a statistician, a safety team, a medical monitor). Reserve Decision \
+Required for disputes about which of several acceptable approaches to take.
 
 Base your answer only on the comment and the document text given to you. Do not \
 invent facts, and do not judge whether the reviewer is scientifically correct -- \
