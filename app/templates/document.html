@@ -68,49 +68,57 @@
   {% if total_count == 0 %}
     <div class="empty-state">This document has no comments.</div>
   {% elif comments %}
-    <table>
-      <thead>
-        <tr>
-          <th>Reviewer</th>
-          <th>Date</th>
-          <th>Location</th>
-          <th>Category</th>
-          <th>Comment</th>
-          <th>Document text</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for c in comments %}
-          <tr>
-            <td>{{ c.author }}</td>
-            <td class="muted">{{ c.comment_date|friendly_date }}</td>
-            <td>{% if c.section %}<span class="section-tag">{{ c.section }}</span>{% endif %}</td>
-            <td>
+    {% for c in comments %}
+      <article class="comment-card">
+        <div class="comment-card-header">
+          <div>
+            <span class="field-label">Reviewer</span>
+            <div class="comment-author">{{ c.author }}</div>
+          </div>
+          <div>
+            <span class="field-label">Date</span>
+            <div class="muted">{{ c.comment_date|friendly_date }}</div>
+          </div>
+          <div>
+            <span class="field-label">Location</span>
+            <div>{% if c.section %}<span class="section-tag">{{ c.section }}</span>{% else %}<span class="muted">&mdash;</span>{% endif %}</div>
+          </div>
+          <div>
+            <span class="field-label">Category</span>
+            <div>
               {% if c.category %}
                 <span class="category-tag {{ c.category|category_class }}">{{ c.category }}</span>
-                <div class="muted rationale">{{ c.rationale }}</div>
               {% else %}
                 <span class="muted">Not classified</span>
               {% endif %}
-            </td>
-            <td>
-              {% if c.parent_author %}
-                <span class="reply-tag">&#8618; reply to {{ c.parent_author }}</span><br>
-              {% endif %}
-              {{ c.text }}
-            </td>
-            <td>
-              {% if c.anchor_text %}
-                &hellip;<span class="anchor-text">{{ c.anchor_text }}</span>&hellip;
-              {% endif %}
-              {% if c.paragraph_text and c.paragraph_text != c.anchor_text %}
-                <div class="muted">{{ c.paragraph_text }}</div>
-              {% endif %}
-            </td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="comment-card-body">
+          <span class="field-label">Comment</span>
+          {% if c.parent_author %}
+            <div class="reply-tag">&#8618; reply to {{ c.parent_author }}</div>
+          {% endif %}
+          <p class="comment-text">{{ c.text }}</p>
+          {% if c.category %}
+            <p class="rationale">{{ c.rationale }}</p>
+          {% endif %}
+        </div>
+
+        {% if c.anchor_text or c.paragraph_text %}
+          <div class="comment-card-context">
+            <span class="field-label">Document text</span>
+            {% if c.anchor_text %}
+              <p class="anchor-block">&hellip;<span class="anchor-text">{{ c.anchor_text }}</span>&hellip;</p>
+            {% endif %}
+            {% if c.paragraph_text and c.paragraph_text != c.anchor_text %}
+              <p class="muted paragraph-context">{{ c.paragraph_text }}</p>
+            {% endif %}
+          </div>
+        {% endif %}
+      </article>
+    {% endfor %}
   {% else %}
     <div class="empty-state">No comments match this filter.</div>
   {% endif %}
