@@ -3,3 +3,5 @@ uvicorn[standard]
 python-multipart
 httpx
 jinja2
+anthropic
+python-dotenv
