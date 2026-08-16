@@ -92,6 +92,58 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 400)
         self.assertIn("Only .docx files are supported", resp.text)
 
+    def test_multiple_file_upload_redirects_to_index(self):
+        with open(SAMPLE, "rb") as f1, open(NO_COMMENTS, "rb") as f2:
+            resp = self.client.post(
+                "/upload",
+                files=[
+                    ("file", ("comment_insight_synthetic_sample.docx", f1, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")),
+                    ("file", ("no_comments.docx", f2, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")),
+                ],
+            )
+        self.assertEqual(resp.status_code, 303)
+        self.assertEqual(resp.headers["location"], "/")
+
+        index = self.client.get("/")
+        self.assertIn("comment_insight_synthetic_sample.docx", index.text)
+        self.assertIn("no_comments.docx", index.text)
+
+    def test_multiple_file_upload_one_bad_file_reports_error_but_still_ingests_the_good_one(self):
+        # Each file is processed independently -- a bad file among several
+        # doesn't roll back the ones that already succeeded, it just surfaces
+        # in the error message alongside them.
+        with open(SAMPLE, "rb") as f1:
+            resp = self.client.post(
+                "/upload",
+                files=[
+                    ("file", ("comment_insight_synthetic_sample.docx", f1, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")),
+                    ("file", ("notes.txt", b"hello", "text/plain")),
+                ],
+            )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("notes.txt", resp.text)
+        self.assertIn("Only .docx files are supported", resp.text)
+        self.assertIn("comment_insight_synthetic_sample.docx", resp.text)
+
+    def test_delete_document_removes_it_from_index(self):
+        self._upload_sample()
+        resp = self.client.post("/documents/1/delete")
+        self.assertEqual(resp.status_code, 303)
+        self.assertEqual(resp.headers["location"], "/")
+
+        index = self.client.get("/")
+        self.assertIn("No documents uploaded yet", index.text)
+        self.assertEqual(self.client.get("/documents/1").status_code, 404)
+
+    def test_delete_unknown_document_is_404(self):
+        resp = self.client.post("/documents/999/delete")
+        self.assertEqual(resp.status_code, 404)
+
+    def test_delete_button_present_on_index(self):
+        self._upload_sample()
+        resp = self.client.get("/")
+        self.assertIn('action="/documents/1/delete"', resp.text)
+
     def test_document_with_zero_comments_shows_honest_empty_state(self):
         self._upload_no_comments()
         resp = self.client.get("/documents/1")

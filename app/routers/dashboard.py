@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from app import charts, reports, storage
+from app import analysis, charts, reports, storage, xlsx_reports
 from app.ai.anthropic_classifier import AnthropicClassifier
 from app.ai.anthropic_conflict_detector import AnthropicConflictDetector
 from app.ai.base import Classifier, ConflictDetector
@@ -112,23 +112,86 @@ def index(request: Request, conn: sqlite3.Connection = Depends(get_db)):
     )
 
 
+@router.get("/analysis")
+def view_analysis(request: Request, conn: sqlite3.Connection = Depends(get_db)):
+    return templates.TemplateResponse(request, "analysis.html", analysis.gather(conn))
+
+
+@router.get("/analysis/export.docx")
+def export_analysis_docx(conn: sqlite3.Connection = Depends(get_db)):
+    data = analysis.gather(conn)
+    content = reports.build_multi_document_report(
+        data["document_summaries"],
+        data["chart_rows"],
+        data["resolution_chart_rows"],
+        data["total_documents"],
+        data["total_comments"],
+        data["priority_count"],
+    )
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": 'attachment; filename="comment_insight_analysis_report.docx"'},
+    )
+
+
+@router.get("/analysis/export.xlsx")
+def export_analysis_xlsx(conn: sqlite3.Connection = Depends(get_db)):
+    data = analysis.gather(conn)
+    content = xlsx_reports.build_workbook(
+        data["document_summaries"],
+        data["chart_rows"],
+        data["resolution_chart_rows"],
+        data["all_comments"],
+    )
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="comment_insight_analysis.xlsx"'},
+    )
+
+
 @router.post("/upload")
 async def upload(request: Request, conn: sqlite3.Connection = Depends(get_db)):
     form = await request.form()
-    file: UploadFile = form["file"]
-    content = await file.read()
-
-    try:
-        document_id = storage.ingest_uploaded_file(conn, file.filename, content)
-    except ValueError as exc:
+    files: list[UploadFile] = form.getlist("file")
+    if not files:
         return templates.TemplateResponse(
             request,
             "index.html",
-            {"documents": storage.list_documents(conn), "error": str(exc)},
+            {"documents": storage.list_documents(conn), "error": "Please choose at least one file."},
             status_code=400,
         )
 
-    return RedirectResponse(f"/documents/{document_id}", status_code=303)
+    document_ids = []
+    errors = []
+    for file in files:
+        content = await file.read()
+        try:
+            document_ids.append(storage.ingest_uploaded_file(conn, file.filename, content))
+        except ValueError as exc:
+            errors.append(f"{file.filename}: {exc}")
+
+    if errors:
+        error_message = "Some files couldn't be uploaded: " + "; ".join(errors)
+        return templates.TemplateResponse(
+            request,
+            "index.html",
+            {"documents": storage.list_documents(conn), "error": error_message},
+            status_code=400,
+        )
+
+    if len(document_ids) == 1:
+        return RedirectResponse(f"/documents/{document_ids[0]}", status_code=303)
+
+    return RedirectResponse("/", status_code=303)
+
+
+@router.post("/documents/{document_id}/delete")
+def delete_document(document_id: int, conn: sqlite3.Connection = Depends(get_db)):
+    if not storage.delete_document(conn, document_id):
+        raise HTTPException(status_code=404, detail="Document not found.")
+    return RedirectResponse("/", status_code=303)
 
 
 @router.get("/documents/{document_id}")

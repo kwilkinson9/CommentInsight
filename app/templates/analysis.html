@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% import "_macros.html" as macros %}
+{% block title %}Analysis across documents - Comment Insight{% endblock %}
+{% block content %}
+  <p><a href="/">&larr; All documents</a></p>
+  <div class="page-title-row">
+    <div>
+      <h1>Analysis across documents</h1>
+      <p class="muted">
+        {{ total_documents }} document{{ "" if total_documents == 1 else "s" }}
+        &middot; {{ total_comments }} comment{{ "" if total_comments == 1 else "s" }} total
+        &middot; {{ priority_count }} need{{ "s" if priority_count == 1 else "" }} team discussion
+      </p>
+    </div>
+    {% if total_comments > 0 %}
+      <div class="button-group">
+        <a class="button-link" href="/analysis/export.xlsx">Export Excel (.xlsx)</a>
+        <a class="button-link" href="/analysis/export.docx">Export report (.docx)</a>
+      </div>
+    {% endif %}
+  </div>
+
+  {% if total_documents == 0 %}
+    <div class="empty-state">No documents uploaded yet. <a href="/">Upload one to get started</a>.</div>
+  {% elif total_comments == 0 %}
+    <div class="empty-state">Your uploaded documents don't have any comments yet.</div>
+  {% else %}
+    {{ macros.bar_chart("Comments by category", chart_rows, "Comment counts by category across all documents") }}
+    {{ macros.bar_chart("Comments by resolution status", resolution_chart_rows, "Comment counts by resolution status across all documents") }}
+
+    <h2>By document</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Filename</th>
+          <th>Comments</th>
+          <th>Needs discussion</th>
+          <th>Accepted</th>
+          <th>Rejected</th>
+          <th>CRM</th>
+          <th>No decision</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for doc in document_summaries %}
+          <tr>
+            <td><a href="/documents/{{ doc.id }}">{{ doc.filename }}</a></td>
+            <td>{{ doc.total }}</td>
+            <td>{{ doc.priority_count }}</td>
+            <td>{{ doc.accepted }}</td>
+            <td>{{ doc.rejected }}</td>
+            <td>{{ doc.crm }}</td>
+            <td>{{ doc.no_decision }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+{% endblock %}

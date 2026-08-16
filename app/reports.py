@@ -17,7 +17,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
-from app import storage
+from app import chart_images, storage
 
 _MUTED = RGBColor(0x6B, 0x72, 0x80)
 _BRAND_RED = RGBColor(0xB3, 0x18, 0x2F)
@@ -52,6 +52,27 @@ def _add_section_heading(doc: Document, text: str):
     for run in heading.runs:
         run.font.color.rgb = _BRAND_RED
     return heading
+
+
+def _add_branded_header(doc: Document, title_text: str) -> None:
+    """Icon + red title + underline rule -- the masthead every export shares."""
+    if _ICON_PATH.exists():
+        icon_paragraph = doc.add_paragraph()
+        icon_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        icon_paragraph.add_run().add_picture(str(_ICON_PATH), width=Inches(0.55))
+
+    title = doc.add_heading(title_text, level=0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    for run in title.runs:
+        run.font.color.rgb = _BRAND_RED
+    _add_bottom_border(title)
+
+
+def _add_credit_footer(doc: Document) -> None:
+    doc.add_paragraph()
+    credit = doc.add_paragraph()
+    credit.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    _muted(credit, "Comment Insight -- part of Dossentra, Medical Writing Solutions", italic=True)
 
 
 def _friendly_date(value: str | None) -> str:
@@ -115,17 +136,7 @@ def build_report(document: dict, comments: list[dict]) -> bytes:
     (Decision Required, or flagged as a reviewer disagreement) come first,
     followed by a compact table of everything else."""
     doc = Document()
-
-    if _ICON_PATH.exists():
-        icon_paragraph = doc.add_paragraph()
-        icon_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        icon_paragraph.add_run().add_picture(str(_ICON_PATH), width=Inches(0.55))
-
-    title = doc.add_heading("Comment Resolution Report", level=0)
-    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    for run in title.runs:
-        run.font.color.rgb = _BRAND_RED
-    _add_bottom_border(title)
+    _add_branded_header(doc, "Comment Resolution Report")
 
     filename_p = doc.add_paragraph(document["filename"])
     filename_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -176,10 +187,70 @@ def build_report(document: dict, comments: list[dict]) -> bytes:
             row[3].text = comment.get("anchor_text") or ""
             row[4].text = storage.RESOLUTION_LABELS.get(comment.get("resolution_status"), "No decision yet")
 
-    doc.add_paragraph()
-    credit = doc.add_paragraph()
-    credit.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    _muted(credit, "Comment Insight -- part of Dossentra, Medical Writing Solutions", italic=True)
+    _add_credit_footer(doc)
+
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    return buffer.getvalue()
+
+
+def build_multi_document_report(
+    document_summaries: list[dict],
+    chart_rows: list[dict],
+    resolution_chart_rows: list[dict],
+    total_documents: int,
+    total_comments: int,
+    priority_count: int,
+) -> bytes:
+    """Build the cross-document analysis report -- summary + both charts
+    (embedded as images; python-docx can't render SVG) + a per-document
+    breakdown table. Unlike the single-document report, this doesn't
+    re-list every comment -- that's what the Excel export and each
+    document's own report are for."""
+    doc = Document()
+    _add_branded_header(doc, "Multi-Document Analysis Report")
+
+    generated = doc.add_paragraph()
+    generated.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    _muted(generated, f"Generated {_friendly_date(datetime.now(timezone.utc).isoformat())}")
+
+    _add_section_heading(doc, "Summary")
+    summary = doc.add_paragraph()
+    summary.add_run(f"{total_documents} document{'' if total_documents == 1 else 's'}").bold = True
+    summary.add_run(f"   ·   {total_comments} total comment{'' if total_comments == 1 else 's'}")
+    summary.add_run(f"   ·   {priority_count} need team discussion")
+
+    if chart_rows:
+        _add_section_heading(doc, "Comments by Category")
+        chart_png = chart_images.render_bar_chart_png("Comments by category", chart_rows)
+        doc.add_picture(io.BytesIO(chart_png), width=Inches(6.3))
+
+    if resolution_chart_rows:
+        _add_section_heading(doc, "Comments by Resolution Status")
+        chart_png = chart_images.render_bar_chart_png("Comments by resolution status", resolution_chart_rows)
+        doc.add_picture(io.BytesIO(chart_png), width=Inches(6.3))
+
+    if document_summaries:
+        _add_section_heading(doc, "By Document")
+        table = doc.add_table(rows=1, cols=7)
+        table.style = "Table Grid"
+        headers = ["Filename", "Comments", "Needs Discussion", "Accepted", "Rejected", "CRM", "No Decision"]
+        for cell, text in zip(table.rows[0].cells, headers):
+            cell.text = text
+            cell.paragraphs[0].runs[0].bold = True
+            _shade_cell(cell, _BRAND_TINT_HEX)
+
+        for doc_summary in document_summaries:
+            row = table.add_row().cells
+            row[0].text = doc_summary["filename"]
+            row[1].text = str(doc_summary["total"])
+            row[2].text = str(doc_summary["priority_count"])
+            row[3].text = str(doc_summary["accepted"])
+            row[4].text = str(doc_summary["rejected"])
+            row[5].text = str(doc_summary["crm"])
+            row[6].text = str(doc_summary["no_decision"])
+
+    _add_credit_footer(doc)
 
     buffer = io.BytesIO()
     doc.save(buffer)

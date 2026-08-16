@@ -1,0 +1,11 @@
+DejaVu Sans (DejaVuSans.ttf, DejaVuSans-Bold.ttf)
+
+Bundled here so chart images in exported reports render consistently
+regardless of what fonts are installed on the machine running the app
+(this matters because the app may run on Windows, where the Linux/macOS
+system font paths this code would otherwise look for don't exist).
+
+DejaVu fonts are a derivative of the Bitstream Vera fonts. The license is
+permissive and explicitly allows redistribution, modification, and
+embedding, including in commercial products, royalty-free. Full text:
+https://dejavu-fonts.github.io/License.html

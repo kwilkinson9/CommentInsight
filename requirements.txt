@@ -6,3 +6,5 @@ jinja2
 anthropic
 python-dotenv
 python-docx
+Pillow
+openpyxl

@@ -38,13 +38,18 @@
 
   <form class="filters" method="post" action="/upload" enctype="multipart/form-data">
     <div>
-      <label for="file">Word document (.docx)</label>
-      <input type="file" id="file" name="file" accept=".docx" required>
+      <label for="file">Word document(s) (.docx)</label>
+      <input type="file" id="file" name="file" accept=".docx" multiple required>
     </div>
     <button type="submit">Upload &amp; extract comments</button>
   </form>
 
-  <h2>Documents</h2>
+  <div class="page-title-row">
+    <h2>Documents</h2>
+    {% if documents %}
+      <a class="button-link" href="/analysis">Analyze across all documents</a>
+    {% endif %}
+  </div>
   {% if documents %}
     <table>
       <thead>
@@ -52,6 +57,7 @@
           <th>Filename</th>
           <th>Uploaded</th>
           <th>Comments</th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -60,6 +66,11 @@
             <td><a href="/documents/{{ doc.id }}">{{ doc.filename }}</a></td>
             <td class="muted">{{ doc.uploaded_at|friendly_date }}</td>
             <td>{{ doc.comment_count }}</td>
+            <td>
+              <form method="post" action="/documents/{{ doc.id }}/delete" onsubmit="return confirm('Delete \'{{ doc.filename }}\'? This removes all its comments, classifications, and resolutions. This cannot be undone.');">
+                <button type="submit" class="delete-button">Delete</button>
+              </form>
+            </td>
           </tr>
         {% endfor %}
       </tbody>

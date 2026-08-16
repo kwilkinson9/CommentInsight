@@ -108,6 +108,36 @@ def get_document(conn: sqlite3.Connection, document_id: int) -> dict | None:
     return dict(row) if row else None
 
 
+def delete_document(conn: sqlite3.Connection, document_id: int) -> bool:
+    """Delete a document and everything derived from it (conflicts,
+    resolutions, classifications, comments) plus the uploaded file on disk.
+    Returns False if the document didn't exist, True otherwise. Deletion
+    order matters -- foreign keys are enforced (PRAGMA foreign_keys = ON in
+    database.py), so children go before parents."""
+    document = get_document(conn, document_id)
+    if document is None:
+        return False
+
+    conn.execute("DELETE FROM conflicts WHERE document_id = ?", (document_id,))
+    conn.execute(
+        "DELETE FROM resolutions WHERE comment_id IN (SELECT id FROM comments WHERE document_id = ?)",
+        (document_id,),
+    )
+    conn.execute(
+        "DELETE FROM classifications WHERE comment_id IN (SELECT id FROM comments WHERE document_id = ?)",
+        (document_id,),
+    )
+    conn.execute("DELETE FROM comments WHERE document_id = ?", (document_id,))
+    conn.execute("DELETE FROM documents WHERE id = ?", (document_id,))
+    conn.commit()
+
+    safe_name = Path(document["filename"]).name
+    saved_path = UPLOAD_DIR / f"{document_id}_{safe_name}"
+    saved_path.unlink(missing_ok=True)
+
+    return True
+
+
 SORT_OPTIONS = {
     "priority": "CASE WHEN category = 'Decision Required' OR conflict_count > 0 THEN 0 ELSE 1 END, c.id",
     "document": "c.id",

@@ -123,6 +123,11 @@
       gap: 1rem;
       flex-wrap: wrap;
     }
+    .button-group {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
 
     .how-it-works {
       display: grid;
@@ -403,6 +408,20 @@
       border-radius: var(--radius);
       margin-bottom: 1rem;
       font-size: 0.9rem;
+    }
+    .delete-button {
+      background: none;
+      border: none;
+      box-shadow: none;
+      padding: 0.3rem 0.55rem;
+      font-size: 0.8rem;
+      color: var(--muted-light);
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    .delete-button:hover, .delete-button:focus-visible {
+      color: #a13333;
+      background: #fdf2f2;
     }
     .empty-state {
       color: var(--muted);
