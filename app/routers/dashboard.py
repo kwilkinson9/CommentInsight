@@ -229,7 +229,7 @@ def export_report(document_id: int, conn: sqlite3.Connection = Depends(get_db)):
 
 
 @router.post("/documents/{document_id}/classify")
-def classify(
+async def classify(
     document_id: int,
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
@@ -237,6 +237,9 @@ def classify(
 ):
     if storage.get_document(conn, document_id) is None:
         raise HTTPException(status_code=404, detail="Document not found.")
+
+    form = await request.form()
+    next_url = form.get("next") or f"/documents/{document_id}"
 
     try:
         classify_document(conn, document_id, classifier)
@@ -248,11 +251,11 @@ def classify(
             status_code=502,
         )
 
-    return RedirectResponse(f"/documents/{document_id}", status_code=303)
+    return RedirectResponse(next_url, status_code=303)
 
 
 @router.post("/documents/{document_id}/detect-conflicts")
-def detect_conflicts(
+async def detect_conflicts(
     document_id: int,
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
@@ -260,6 +263,9 @@ def detect_conflicts(
 ):
     if storage.get_document(conn, document_id) is None:
         raise HTTPException(status_code=404, detail="Document not found.")
+
+    form = await request.form()
+    next_url = form.get("next") or f"/documents/{document_id}"
 
     try:
         detect_conflicts_for_document(conn, document_id, detector)
@@ -271,7 +277,7 @@ def detect_conflicts(
             status_code=502,
         )
 
-    return RedirectResponse(f"/documents/{document_id}", status_code=303)
+    return RedirectResponse(next_url, status_code=303)
 
 
 @router.post("/documents/{document_id}/comments/{comment_id}/resolution")

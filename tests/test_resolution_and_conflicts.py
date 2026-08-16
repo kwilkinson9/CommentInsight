@@ -154,12 +154,37 @@ class ResolutionAndConflictTests(unittest.TestCase):
 
     # --- Priority (Decision Required category, or flagged as conflicting) ----
 
-    def test_priority_comments_sort_first_by_default(self):
+    def test_default_sort_is_document_order_and_unaffected_by_classification(self):
+        # Priority used to be the default sort, which meant a comment could
+        # physically jump to the top of the list the moment classification
+        # flagged it as Decision Required -- disruptive mid-review. Document
+        # order is stable regardless of what classification/conflict
+        # detection find, so it's the default now; Priority is still an
+        # explicit sort choice (see test below).
+        #
+        # Comment "1" precedes comment "3" in the document; classification
+        # makes comment "3" a priority comment (Decision Required). If
+        # default sort were still priority, "3" would jump ahead of "1".
+        self._upload_sample()
+        before = self.client.get("/documents/1").text
+        pos_plain_before = before.find("Is this treatment-related headache")  # comment 1
+        pos_priority_before = before.find("We need to decide whether to list")  # comment 3
+        self.assertLess(pos_plain_before, pos_priority_before, "should already be in document order")
+
+        self.client.post("/documents/1/classify")  # comment "3" -> Decision Required
+        self.client.post("/documents/1/detect-conflicts")
+
+        after = self.client.get("/documents/1").text
+        pos_plain_after = after.find("Is this treatment-related headache")
+        pos_priority_after = after.find("We need to decide whether to list")
+        self.assertLess(pos_plain_after, pos_priority_after, "comment 3 must not jump ahead of comment 1")
+
+    def test_priority_sort_still_available_explicitly(self):
         self._upload_sample()
         self.client.post("/documents/1/classify")   # comment "3" -> Decision Required
         self.client.post("/documents/1/detect-conflicts")  # comments "4" and "8" flagged
 
-        page = self.client.get("/documents/1")  # default sort = priority
+        page = self.client.get("/documents/1", params={"sort": "priority"})
         text = page.text
 
         # comment "3"'s text should appear before a comment with neither
@@ -173,6 +198,24 @@ class ResolutionAndConflictTests(unittest.TestCase):
         self.assertNotEqual(pos_plain, -1)
         self.assertLess(pos_priority, pos_plain)
         self.assertLess(pos_conflict, pos_plain)
+
+    def test_classify_preserves_the_currently_selected_sort(self):
+        self._upload_sample()
+        resp = self.client.post(
+            "/documents/1/classify",
+            data={"next": "/documents/1?sort=reviewer"},
+        )
+        self.assertEqual(resp.status_code, 303)
+        self.assertEqual(resp.headers["location"], "/documents/1?sort=reviewer")
+
+    def test_detect_conflicts_preserves_the_currently_selected_sort(self):
+        self._upload_sample()
+        resp = self.client.post(
+            "/documents/1/detect-conflicts",
+            data={"next": "/documents/1?sort=date"},
+        )
+        self.assertEqual(resp.status_code, 303)
+        self.assertEqual(resp.headers["location"], "/documents/1?sort=date")
 
     def test_priority_badge_shown_on_flagged_comments(self):
         self._upload_sample()

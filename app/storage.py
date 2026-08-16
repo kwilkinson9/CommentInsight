@@ -144,7 +144,12 @@ SORT_OPTIONS = {
     "date": "c.comment_date IS NULL, c.comment_date, c.id",
     "reviewer": "c.author COLLATE NOCASE, c.id",
 }
-DEFAULT_SORT = "priority"
+# "document" (stable, unaffected by classification results) rather than
+# "priority" -- with priority as the default, running classification would
+# make newly-flagged Decision Required comments jump to the top of the list
+# the writer was already reading through. Priority is still one click away
+# in the sort dropdown for whoever wants that view.
+DEFAULT_SORT = "document"
 
 def is_priority(comment: dict) -> bool:
     """A comment needs the writer's attention above the rest of the pile

@@ -19,6 +19,7 @@
 
   {% if total_count > 0 %}
     <form class="filters" method="post" action="/documents/{{ document.id }}/classify">
+      <input type="hidden" name="next" value="/documents/{{ document.id }}{{ '?' + current_query if current_query else '' }}">
       {% if unclassified_count > 0 %}
         <span class="muted">{{ total_count - unclassified_count }} of {{ total_count }} comments classified</span>
         <button type="submit">Classify {{ unclassified_count }} remaining comment{{ "" if unclassified_count == 1 else "s" }}</button>
@@ -29,6 +30,7 @@
 
     {% if total_count > 1 %}
       <form class="filters" method="post" action="/documents/{{ document.id }}/detect-conflicts">
+        <input type="hidden" name="next" value="/documents/{{ document.id }}{{ '?' + current_query if current_query else '' }}">
         {% if conflict_count > 0 %}
           <span class="muted">{{ conflict_count }} comment{{ "" if conflict_count == 1 else "s" }} flagged as reviewer disagreements</span>
         {% else %}
