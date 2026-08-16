@@ -5,3 +5,4 @@ httpx
 jinja2
 anthropic
 python-dotenv
+python-docx

@@ -116,6 +116,13 @@ SORT_OPTIONS = {
 }
 DEFAULT_SORT = "priority"
 
+def is_priority(comment: dict) -> bool:
+    """A comment needs the writer's attention above the rest of the pile
+    when it either needs someone else's sign-off (Decision Required) or
+    two reviewers were flagged as disagreeing about it."""
+    return comment.get("category") == "Decision Required" or (comment.get("conflict_count") or 0) > 0
+
+
 RESOLUTION_STATUSES = ["accepted", "rejected", "crm"]
 RESOLUTION_LABELS = {
     "accepted": "Accepted",

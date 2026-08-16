@@ -7,10 +7,10 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from app import storage
+from app import reports, storage
 from app.ai.anthropic_classifier import AnthropicClassifier
 from app.ai.anthropic_conflict_detector import AnthropicConflictDetector
 from app.ai.base import Classifier, ConflictDetector
@@ -59,10 +59,6 @@ def get_conflict_detector() -> ConflictDetector:
     return AnthropicConflictDetector()
 
 
-def _is_priority(comment: dict) -> bool:
-    return comment.get("category") == "Decision Required" or (comment.get("conflict_count") or 0) > 0
-
-
 def _document_context(
     conn: sqlite3.Connection,
     document_id: int,
@@ -80,7 +76,7 @@ def _document_context(
     conflicts_by_comment = storage.list_conflicts_by_comment(conn, document_id)
     for comment in comments:
         comment["conflicts"] = conflicts_by_comment.get(comment["id"], [])
-        comment["is_priority"] = _is_priority(comment)
+        comment["is_priority"] = storage.is_priority(comment)
 
     current_query = urlencode(
         {k: v for k, v in {"q": q, "author": author, "category": category, "sort": sort}.items() if v}
@@ -143,6 +139,26 @@ def view_document(
 ):
     context = _document_context(conn, document_id, q=q, author=author, category=category, sort=sort)
     return templates.TemplateResponse(request, "document.html", context)
+
+
+@router.get("/documents/{document_id}/export")
+def export_report(document_id: int, conn: sqlite3.Connection = Depends(get_db)):
+    document = storage.get_document(conn, document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found.")
+
+    comments = storage.list_comments(conn, document_id)
+    conflicts_by_comment = storage.list_conflicts_by_comment(conn, document_id)
+    for comment in comments:
+        comment["conflicts"] = conflicts_by_comment.get(comment["id"], [])
+
+    content = reports.build_report(document, comments)
+    filename = f"{Path(document['filename']).stem}_comment_report.docx"
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/documents/{document_id}/classify")
