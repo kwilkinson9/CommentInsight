@@ -58,6 +58,15 @@
       </div>
     {% endif %}
 
+    <h2>Needs team discussion ({{ priority_comments|length }})</h2>
+    {% if priority_comments %}
+      {% for c in priority_comments %}
+        {{ macros.comment_card(c, None, resolution_statuses, resolution_labels, classification_categories, "/analysis", show_document=True) }}
+      {% endfor %}
+    {% else %}
+      <div class="empty-state">Nothing flagged for discussion right now -- no Decision Required comments or reviewer disagreements across your documents.</div>
+    {% endif %}
+
     <h2>By document</h2>
     <table>
       <thead>

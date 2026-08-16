@@ -15,7 +15,7 @@ from app import analysis, charts, reports, storage, xlsx_reports
 from app.ai.anthropic_classifier import AnthropicClassifier
 from app.ai.anthropic_conflict_detector import AnthropicConflictDetector
 from app.ai.anthropic_insights import AnthropicInsightsGenerator
-from app.ai.base import Classifier, ConflictDetector, InsightsGenerator
+from app.ai.base import CATEGORIES, Classifier, ConflictDetector, InsightsGenerator
 from app.ai.service import classify_document, detect_conflicts_for_document, generate_insights
 from app.database import get_db
 
@@ -92,6 +92,20 @@ def _insights_context(conn: sqlite3.Connection) -> dict:
     }
 
 
+def _analysis_context(conn: sqlite3.Connection, error: str | None = None) -> dict:
+    data = analysis.gather(conn)
+    priority_comments = [c for c in data["all_comments"] if c["is_priority"]]
+    return {
+        **data,
+        **_insights_context(conn),
+        "priority_comments": priority_comments,
+        "resolution_statuses": storage.RESOLUTION_STATUSES,
+        "resolution_labels": storage.RESOLUTION_LABELS,
+        "classification_categories": CATEGORIES,
+        "error": error,
+    }
+
+
 def _document_context(
     conn: sqlite3.Connection,
     document_id: int,
@@ -129,6 +143,7 @@ def _document_context(
         "categories": storage.list_categories(conn, document_id),
         "resolution_statuses": storage.RESOLUTION_STATUSES,
         "resolution_labels": storage.RESOLUTION_LABELS,
+        "classification_categories": CATEGORIES,
         "q": q,
         "author": author,
         "category": category,
@@ -147,8 +162,7 @@ def index(request: Request, conn: sqlite3.Connection = Depends(get_db)):
 
 @router.get("/analysis")
 def view_analysis(request: Request, conn: sqlite3.Connection = Depends(get_db)):
-    context = {**analysis.gather(conn), **_insights_context(conn)}
-    return templates.TemplateResponse(request, "analysis.html", context)
+    return templates.TemplateResponse(request, "analysis.html", _analysis_context(conn))
 
 
 @router.post("/analysis/insights")
@@ -160,11 +174,7 @@ def create_analysis_insights(
     try:
         generate_insights(conn, generator)
     except Exception as exc:
-        context = {
-            **analysis.gather(conn),
-            **_insights_context(conn),
-            "error": f"Insight generation failed: {exc}",
-        }
+        context = _analysis_context(conn, error=f"Insight generation failed: {exc}")
         return templates.TemplateResponse(request, "analysis.html", context, status_code=502)
 
     return RedirectResponse("/analysis", status_code=303)
@@ -352,6 +362,35 @@ async def set_resolution(
         raise HTTPException(status_code=400, detail="Unrecognized resolution status.")
 
     storage.save_resolution(conn, comment_id, status, note)
+
+    next_url = form.get("next") or f"/documents/{document_id}"
+    return RedirectResponse(next_url, status_code=303)
+
+
+@router.post("/documents/{document_id}/comments/{comment_id}/category")
+async def set_category(
+    document_id: int,
+    comment_id: int,
+    request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
+):
+    """Lets the writer set or correct a comment's category by hand -- e.g.
+    fixing something the AI got wrong, or classifying a comment without
+    running AI classification at all. Recorded the same way an AI
+    classification is (the classifications table), just with model="manual"
+    so it's clear in exports that a person, not the AI, made the call."""
+    if storage.get_document(conn, document_id) is None:
+        raise HTTPException(status_code=404, detail="Document not found.")
+
+    form = await request.form()
+    category = (form.get("category") or "").strip() or None
+    if category is not None and category not in CATEGORIES:
+        raise HTTPException(status_code=400, detail="Unrecognized category.")
+
+    if category is None:
+        storage.delete_classification(conn, comment_id)
+    else:
+        storage.save_classification(conn, comment_id, category, "Set manually by the writer.", "manual")
 
     next_url = form.get("next") or f"/documents/{document_id}"
     return RedirectResponse(next_url, status_code=303)

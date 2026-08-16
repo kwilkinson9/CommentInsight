@@ -109,6 +109,44 @@ class AnalysisPageTests(unittest.TestCase):
         self.assertIn("Summary", wb.sheetnames)
         self.assertIn("All Comments", wb.sheetnames)
 
+    def test_needs_team_discussion_empty_state_when_nothing_flagged(self):
+        self._upload(SAMPLE, "a.docx")
+        resp = self.client.get("/analysis")
+        self.assertIn("Needs team discussion (0)", resp.text)
+        self.assertIn("Nothing flagged for discussion", resp.text)
+
+    def test_needs_team_discussion_lists_priority_comments_across_documents_with_source_doc(self):
+        self._upload(SAMPLE, "a.docx")
+        self._upload(SAMPLE, "b.docx")
+        comment_id_a = self._comment_id(1, "3")  # doc a, comment 3
+        comment_id_b = self._comment_id(2, "3")  # doc b, comment 3
+        self.client.post(f"/documents/1/comments/{comment_id_a}/category", data={"category": "Decision Required"})
+        self.client.post(f"/documents/2/comments/{comment_id_b}/category", data={"category": "Decision Required"})
+
+        resp = self.client.get("/analysis")
+        self.assertIn("Needs team discussion (2)", resp.text)
+        self.assertIn(">a.docx<", resp.text)
+        self.assertIn(">b.docx<", resp.text)
+
+    def test_resolution_can_be_set_from_the_analysis_page_and_redirects_back(self):
+        self._upload(SAMPLE, "a.docx")
+        comment_id = self._comment_id(1, "3")
+        self.client.post(f"/documents/1/comments/{comment_id}/category", data={"category": "Decision Required"})
+
+        resp = self.client.post(
+            f"/documents/1/comments/{comment_id}/resolution",
+            data={"status": "crm", "note": "Discuss at CRM.", "next": "/analysis"},
+        )
+        self.assertEqual(resp.status_code, 303)
+        self.assertEqual(resp.headers["location"], "/analysis")
+
+        page = self.client.get("/analysis")
+        self.assertIn("Discuss at CRM.", page.text)
+
+    def _comment_id(self, document_id: int, external_id: str) -> int:
+        comments = self.client.get(f"/api/documents/{document_id}/comments").json()
+        return next(c["id"] for c in comments if c["external_id"] == external_id)
+
     def test_xlsx_all_comments_sheet_includes_resolution_note_column(self):
         self._upload(SAMPLE, "a.docx")
         comment_id = self.client.get("/api/documents/1/comments").json()[0]["id"]

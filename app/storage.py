@@ -380,3 +380,11 @@ def save_classification(
         (comment_id, category, rationale, model, datetime.now(timezone.utc).isoformat()),
     )
     conn.commit()
+
+
+def delete_classification(conn: sqlite3.Connection, comment_id: int) -> None:
+    """Clear a comment's classification, returning it to "Not classified" --
+    used when a writer picks the blank option to undo an AI or manual
+    category assignment."""
+    conn.execute("DELETE FROM classifications WHERE comment_id = ?", (comment_id,))
+    conn.commit()

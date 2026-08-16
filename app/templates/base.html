@@ -251,12 +251,16 @@
       background: var(--surface-muted);
       border-bottom: 1px solid var(--border);
     }
-    .resolution-form {
+    .comment-card-header-with-document {
+      grid-template-columns: 1.1fr 1fr 0.8fr 0.9fr 0.9fr 1.5fr;
+    }
+    .resolution-form, .category-form {
       display: flex;
       flex-direction: column;
       gap: 0.3rem;
     }
-    .resolution-form select, .resolution-form input[type=text] {
+    .category-current { margin-bottom: 0.3rem; }
+    .resolution-form select, .resolution-form input[type=text], .category-form select {
       padding: 0.3rem 0.5rem;
       font-size: 0.82rem;
     }

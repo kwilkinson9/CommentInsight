@@ -70,6 +70,10 @@ class ClassificationTests(unittest.TestCase):
                 files={"file": ("comment_insight_synthetic_sample.docx", f, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
             )
 
+    def _db_id_for_external_id(self, external_id: str) -> int:
+        comments = self.client.get("/api/documents/1/comments").json()
+        return next(c["id"] for c in comments if c["external_id"] == external_id)
+
     def test_document_starts_unclassified(self):
         self._upload_sample()
         resp = self.client.get("/documents/1")
@@ -85,7 +89,11 @@ class ClassificationTests(unittest.TestCase):
         page = self.client.get("/documents/1")
         self.assertIn("All 9 comments classified", page.text)
         self.assertIn("category-tag", page.text)
-        self.assertNotIn("Not classified", page.text)
+        # The category-override dropdown always includes a "Not classified"
+        # *option* (to allow clearing a category by hand) -- what shouldn't
+        # appear once everything's classified is the muted placeholder text
+        # shown in place of a category tag for an unclassified comment.
+        self.assertNotIn('<span class="muted">Not classified</span>', page.text)
 
     def test_reclassifying_skips_already_classified_comments(self):
         self._upload_sample()
@@ -105,6 +113,49 @@ class ClassificationTests(unittest.TestCase):
 
         resp = self.client.get("/documents/1", params={"category": "Editorial"})
         self.assertIn("No comments match this filter.", resp.text)
+
+    def test_setting_a_category_manually_on_an_unclassified_comment(self):
+        self._upload_sample()
+        comment_id = self._db_id_for_external_id("0")
+
+        resp = self.client.post(
+            f"/documents/1/comments/{comment_id}/category",
+            data={"category": "Editorial", "next": "/documents/1"},
+        )
+        self.assertEqual(resp.status_code, 303)
+
+        comments = self.client.get("/api/documents/1/comments").json()
+        comment = next(c for c in comments if c["id"] == comment_id)
+        self.assertEqual(comment["category"], "Editorial")
+        self.assertEqual(comment["rationale"], "Set manually by the writer.")
+
+    def test_manual_category_overrides_ai_classification(self):
+        self._upload_sample()
+        self.client.post("/documents/1/classify")  # everything -> "Other" via FakeClassifier
+        comment_id = self._db_id_for_external_id("0")
+
+        self.client.post(f"/documents/1/comments/{comment_id}/category", data={"category": "Decision Required"})
+
+        comments = self.client.get("/api/documents/1/comments").json()
+        comment = next(c for c in comments if c["id"] == comment_id)
+        self.assertEqual(comment["category"], "Decision Required")
+
+    def test_clearing_a_category_manually(self):
+        self._upload_sample()
+        comment_id = self._db_id_for_external_id("0")
+        self.client.post(f"/documents/1/comments/{comment_id}/category", data={"category": "Editorial"})
+
+        self.client.post(f"/documents/1/comments/{comment_id}/category", data={"category": ""})
+
+        comments = self.client.get("/api/documents/1/comments").json()
+        comment = next(c for c in comments if c["id"] == comment_id)
+        self.assertIsNone(comment["category"])
+
+    def test_rejects_unknown_category(self):
+        self._upload_sample()
+        comment_id = self._db_id_for_external_id("0")
+        resp = self.client.post(f"/documents/1/comments/{comment_id}/category", data={"category": "Made Up Category"})
+        self.assertEqual(resp.status_code, 400)
 
     def test_classifier_failure_shows_friendly_error_not_a_500(self):
         app.dependency_overrides[get_classifier] = lambda: BrokenClassifier()

@@ -1,3 +1,95 @@
+{% macro comment_card(c, document_id, resolution_statuses, resolution_labels, classification_categories, next_url, show_document=False) %}
+  {% set document_id = c.document_id if show_document else document_id %}
+  <article class="comment-card{{ ' comment-card-priority' if c.is_priority else '' }}">
+    <div class="comment-card-header{{ ' comment-card-header-with-document' if show_document else '' }}">
+      {% if show_document %}
+        <div>
+          <span class="field-label">Document</span>
+          <div><a href="/documents/{{ document_id }}">{{ c.document_filename }}</a></div>
+        </div>
+      {% endif %}
+      <div>
+        <span class="field-label">Reviewer</span>
+        <div class="comment-author">{{ c.author }}</div>
+      </div>
+      <div>
+        <span class="field-label">Date</span>
+        <div class="muted">{{ c.comment_date|friendly_date }}</div>
+      </div>
+      <div>
+        <span class="field-label">Location</span>
+        <div>{% if c.section %}<span class="section-tag">{{ c.section }}</span>{% else %}<span class="muted">&mdash;</span>{% endif %}</div>
+      </div>
+      <div>
+        <span class="field-label">Category</span>
+        <div class="category-current">
+          {% if c.is_priority %}<span class="priority-badge">&#9873; Priority</span>{% endif %}
+          {% if c.category %}
+            <span class="category-tag {{ c.category|category_class }}">{{ c.category }}</span>
+          {% else %}
+            <span class="muted">Not classified</span>
+          {% endif %}
+        </div>
+        <form method="post" action="/documents/{{ document_id }}/comments/{{ c.id }}/category" class="category-form">
+          <input type="hidden" name="next" value="{{ next_url }}">
+          <select name="category" onchange="this.form.submit()">
+            <option value="" {{ "selected" if not c.category else "" }}>Not classified</option>
+            {% for cat in classification_categories %}
+              <option value="{{ cat }}" {{ "selected" if c.category == cat else "" }}>{{ cat }}</option>
+            {% endfor %}
+          </select>
+        </form>
+      </div>
+      <div>
+        <span class="field-label">Resolution</span>
+        <form method="post" action="/documents/{{ document_id }}/comments/{{ c.id }}/resolution" class="resolution-form">
+          <input type="hidden" name="next" value="{{ next_url }}">
+          <select name="status">
+            <option value="" {{ "selected" if not c.resolution_status else "" }}>No decision yet</option>
+            {% for status in resolution_statuses %}
+              <option value="{{ status }}" {{ "selected" if c.resolution_status == status else "" }}>{{ resolution_labels[status] }}</option>
+            {% endfor %}
+          </select>
+          <input type="text" name="note" value="{{ c.resolution_note or '' }}" placeholder="Note, e.g. edited directly, replied in Word">
+          <button type="submit">Save</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="comment-card-body">
+      <span class="field-label">Comment</span>
+      {% if c.parent_author %}
+        <div class="reply-tag">&#8618; reply to {{ c.parent_author }}</div>
+      {% endif %}
+      <p class="comment-text">{{ c.text }}</p>
+      {% if c.category %}
+        <p class="rationale">{{ c.rationale }}</p>
+      {% endif %}
+    </div>
+
+    {% if c.conflicts %}
+      <div class="conflict-box">
+        <span class="field-label">Disagrees with another reviewer</span>
+        {% for conf in c.conflicts %}
+          <p class="conflict-item"><strong>{{ conf.other_author }}:</strong> &ldquo;{{ conf.other_text }}&rdquo;<br><span class="muted">{{ conf.reason }}</span></p>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {% if c.anchor_text or c.paragraph_text %}
+      <div class="comment-card-context">
+        <span class="field-label">Document text</span>
+        {% if c.anchor_text %}
+          <p class="anchor-block">&hellip;<span class="anchor-text">{{ c.anchor_text }}</span>&hellip;</p>
+        {% endif %}
+        {% if c.paragraph_text and c.paragraph_text != c.anchor_text %}
+          <p class="muted paragraph-context">{{ c.paragraph_text }}</p>
+        {% endif %}
+      </div>
+    {% endif %}
+  </article>
+{% endmacro %}
+
 {% macro bar_chart(title, rows, aria_label) %}
   <div class="chart-card">
     <h3>{{ title }}</h3>
