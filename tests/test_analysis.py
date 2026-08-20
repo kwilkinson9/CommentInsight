@@ -86,6 +86,20 @@ class AnalysisPageTests(unittest.TestCase):
         self.assertNotIn("Needs team discussion", resp.text)
         self.assertNotIn("Find patterns across documents", resp.text)
 
+    def test_charts_tab_shows_section_hotspots_when_sections_recur_across_documents(self):
+        self._upload(SAMPLE, "a.docx")
+        self._upload(SAMPLE, "b.docx")  # same content -> same section headings recur
+        resp = self.client.get("/analysis/charts")
+        self.assertIn("Section hotspots", resp.text)
+        self.assertIn("5.3 Summary of Clinical Safety Findings &gt; 5.3.1 Overview of Adverse Events", resp.text)
+        self.assertIn("recurring problem", resp.text)
+
+    def test_charts_tab_shows_empty_state_for_section_hotspots_with_one_document(self):
+        self._upload(SAMPLE, "a.docx")
+        resp = self.client.get("/analysis/charts")
+        self.assertIn("Section hotspots", resp.text)
+        self.assertIn("No sections have drawn comments in more than one document", resp.text)
+
     def test_export_links_present_when_there_are_comments(self):
         self._upload(SAMPLE, "a.docx")
         resp = self.client.get("/analysis")
@@ -110,8 +124,22 @@ class AnalysisPageTests(unittest.TestCase):
         text = "\n".join(p.text for p in doc.paragraphs)
         self.assertIn("Multi-Document Analysis Report", text)
         self.assertIn("2 documents", text)
-        self.assertEqual(len(doc.inline_shapes), 3)  # icon + 2 charts
-        self.assertEqual(len(doc.tables[0].rows), 3)  # header + a.docx + b.docx
+        # Uploading the same file twice means its section headings recur
+        # across documents, so this also exercises the section-hotspots
+        # table (a table, not a chart image -- section names are long).
+        self.assertIn("Section Hotspots (Recurring Across Documents)", text)
+        self.assertEqual(len(doc.inline_shapes), 3)  # icon + category chart + resolution chart
+        self.assertEqual(len(doc.tables), 2)  # section hotspots + by document
+        by_document_table = doc.tables[-1]
+        self.assertEqual(len(by_document_table.rows), 3)  # header + a.docx + b.docx
+
+    def test_docx_export_omits_section_hotspots_section_with_only_one_document(self):
+        self._upload(SAMPLE, "a.docx")
+        resp = self.client.get("/analysis/export.docx")
+        doc = DocxDocument(io.BytesIO(resp.content))
+        text = "\n".join(p.text for p in doc.paragraphs)
+        self.assertNotIn("Section Hotspots", text)
+        self.assertEqual(len(doc.tables), 1)  # just "By Document", no hotspots table
 
     def test_xlsx_export_returns_a_valid_workbook(self):
         self._upload(SAMPLE, "a.docx")
@@ -126,6 +154,23 @@ class AnalysisPageTests(unittest.TestCase):
         wb = load_workbook(io.BytesIO(resp.content))
         self.assertIn("Summary", wb.sheetnames)
         self.assertIn("All Comments", wb.sheetnames)
+
+    def test_xlsx_export_includes_section_hotspots_sheet_when_sections_recur(self):
+        self._upload(SAMPLE, "a.docx")
+        self._upload(SAMPLE, "b.docx")
+        resp = self.client.get("/analysis/export.xlsx")
+        wb = load_workbook(io.BytesIO(resp.content))
+        self.assertIn("Section Hotspots", wb.sheetnames)
+        sheet = wb["Section Hotspots"]
+        headers = [cell.value for cell in sheet[1]]
+        self.assertEqual(headers, ["Section", "Documents", "Comment count"])
+        self.assertGreater(sheet.max_row, 1)
+
+    def test_xlsx_export_omits_section_hotspots_sheet_with_only_one_document(self):
+        self._upload(SAMPLE, "a.docx")
+        resp = self.client.get("/analysis/export.xlsx")
+        wb = load_workbook(io.BytesIO(resp.content))
+        self.assertNotIn("Section Hotspots", wb.sheetnames)
 
     def test_needs_team_discussion_empty_state_when_nothing_flagged(self):
         self._upload(SAMPLE, "a.docx")

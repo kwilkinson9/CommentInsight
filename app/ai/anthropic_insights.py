@@ -27,6 +27,15 @@ or resolution statuses that cluster in a way worth flagging, and how documents c
 each other (e.g. one document has far more unresolved Decision Required comments than \
 the others).
 
+Pay particular attention to two patterns a medical writer can fix once rather than every \
+time: (1) the same wording, phrase, or word choice getting corrected by reviewers in more \
+than one document -- a sign the house style guide or template language itself needs \
+fixing, not just this one document; and (2) the same section or heading repeatedly \
+drawing comments across different documents -- a sign that section's template \
+instructions or boilerplate, not any single document's content, are the recurring \
+problem. When you spot one, name the specific wording or section rather than saying \
+"phrasing issues exist."
+
 Write for someone who has already seen the raw comments and the charts -- don't restate \
 individual comments verbatim or just repeat counts, explain what the pattern is and why it \
 matters. If there's too little data for a real pattern (e.g. only one document, or very \

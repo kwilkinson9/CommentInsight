@@ -38,6 +38,31 @@
       {{ macros.bar_chart("Comments by category", chart_rows, "Comment counts by category across all documents") }}
       {{ macros.bar_chart("Comments by resolution status", resolution_chart_rows, "Comment counts by resolution status across all documents") }}
 
+      <h2>Section hotspots (recurring across documents)</h2>
+      {% if section_hotspot_rows %}
+        <p class="muted">Sections that drew comments in more than one document -- often a sign the template's wording or instructions for that section, not any one document's content, are the recurring problem.</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Section</th>
+              <th>Documents</th>
+              <th>Comments</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in section_hotspot_rows %}
+              <tr>
+                <td>{{ row.section }}</td>
+                <td>{{ row.document_count }}</td>
+                <td>{{ row.count }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <div class="empty-state">No sections have drawn comments in more than one document yet -- this fills in once the same section heading shows up as a comment anchor in two or more documents.</div>
+      {% endif %}
+
       <h2>By document</h2>
       <table>
         <thead>

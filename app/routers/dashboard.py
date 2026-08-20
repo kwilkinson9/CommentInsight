@@ -200,6 +200,7 @@ def export_analysis_docx(conn: sqlite3.Connection = Depends(get_db)):
         data["total_comments"],
         data["priority_count"],
         insights=insights,
+        section_hotspot_rows=data["section_hotspot_rows"],
     )
     return Response(
         content=content,
@@ -216,6 +217,7 @@ def export_analysis_xlsx(conn: sqlite3.Connection = Depends(get_db)):
         data["chart_rows"],
         data["resolution_chart_rows"],
         data["all_comments"],
+        section_hotspot_rows=data["section_hotspot_rows"],
     )
     return Response(
         content=content,

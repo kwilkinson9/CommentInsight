@@ -101,5 +101,54 @@ class ResolutionBreakdownTests(unittest.TestCase):
         self.assertEqual(counts, sorted(counts, reverse=True))
 
 
+class SectionHotspotsTests(unittest.TestCase):
+    def test_section_in_multiple_documents_is_included(self):
+        comments = [
+            {"section": "5.3.2 Deaths", "document_id": 1},
+            {"section": "5.3.2 Deaths", "document_id": 2},
+        ]
+        rows = charts.section_hotspots(comments)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["section"], "5.3.2 Deaths")
+        self.assertEqual(rows[0]["document_count"], 2)
+        self.assertEqual(rows[0]["count"], 2)
+
+    def test_section_in_only_one_document_is_excluded(self):
+        comments = [
+            {"section": "5.3.2 Deaths", "document_id": 1},
+            {"section": "5.3.2 Deaths", "document_id": 1},
+            {"section": "9.1 Primary Endpoint", "document_id": 1},
+        ]
+        rows = charts.section_hotspots(comments)
+        self.assertEqual(rows, [])
+
+    def test_comments_without_a_section_are_ignored(self):
+        comments = [
+            {"section": None, "document_id": 1},
+            {"section": "", "document_id": 2},
+        ]
+        rows = charts.section_hotspots(comments)
+        self.assertEqual(rows, [])
+
+    def test_sorted_by_total_comment_count_descending(self):
+        comments = (
+            [{"section": "A", "document_id": 1}, {"section": "A", "document_id": 2}] * 3
+            + [{"section": "B", "document_id": 1}, {"section": "B", "document_id": 2}]
+        )
+        rows = charts.section_hotspots(comments)
+        counts = [row["count"] for row in rows]
+        self.assertEqual(counts, sorted(counts, reverse=True))
+        self.assertEqual(rows[0]["section"], "A")
+
+    def test_capped_at_max_rows(self):
+        comments = []
+        for i in range(15):
+            section = f"Section {i}"
+            comments.append({"section": section, "document_id": 1})
+            comments.append({"section": section, "document_id": 2})
+        rows = charts.section_hotspots(comments, max_rows=5)
+        self.assertEqual(len(rows), 5)
+
+
 if __name__ == "__main__":
     unittest.main()

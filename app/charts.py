@@ -97,3 +97,37 @@ def resolution_breakdown(comments: list[dict]) -> list[dict]:
         rows.append({"label": _NO_DECISION_LABEL, "count": no_decision, "color": _NO_DECISION_COLOR})
 
     return _scale_and_sort(rows)
+
+
+def section_hotspots(comments: list[dict], max_rows: int = 10) -> list[dict]:
+    """Sections that draw comments in more than one document -- the
+    strongest signal that a section's *template* wording or instructions
+    are the recurring problem, not any single document's content. Grouped
+    by exact section text (same identity rule the revision-matching feature
+    uses), so this only catches genuinely reused section headings/numbering
+    across documents, not one document simply having a busy section on its
+    own; comments with no section anchor are excluded entirely.
+
+    Returns up to max_rows {"section", "document_count", "count"} rows,
+    sorted by total comment count descending. Rendered as a table rather
+    than a bar chart -- section headings can be long or deeply nested
+    (e.g. "5.3 Summary of Clinical Safety Findings > 5.3.1 Overview of
+    Adverse Events"), unlike the fixed short labels category/resolution
+    charts use, so a bar chart's label column isn't a good fit here.
+    """
+    groups: dict[str, dict] = {}
+    for comment in comments:
+        section = (comment.get("section") or "").strip()
+        if not section:
+            continue
+        group = groups.setdefault(section, {"count": 0, "document_ids": set()})
+        group["count"] += 1
+        group["document_ids"].add(comment.get("document_id"))
+
+    rows = [
+        {"section": section, "document_count": len(group["document_ids"]), "count": group["count"]}
+        for section, group in groups.items()
+        if len(group["document_ids"]) > 1
+    ]
+    rows.sort(key=lambda row: row["count"], reverse=True)
+    return rows[:max_rows]

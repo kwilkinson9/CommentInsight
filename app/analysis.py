@@ -61,4 +61,5 @@ def gather(conn: sqlite3.Connection) -> dict:
         "priority_count": sum(1 for c in all_comments if c["is_priority"]),
         "chart_rows": charts.category_breakdown(all_comments),
         "resolution_chart_rows": charts.resolution_breakdown(all_comments),
+        "section_hotspot_rows": charts.section_hotspots(all_comments),
     }

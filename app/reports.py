@@ -206,12 +206,14 @@ def build_multi_document_report(
     total_comments: int,
     priority_count: int,
     insights: dict | None = None,
+    section_hotspot_rows: list[dict] | None = None,
 ) -> bytes:
-    """Build the cross-document analysis report -- summary + both charts
-    (embedded as images; python-docx can't render SVG) + a per-document
-    breakdown table. Unlike the single-document report, this doesn't
-    re-list every comment -- that's what the Excel export and each
-    document's own report are for."""
+    """Build the cross-document analysis report -- summary, AI insights,
+    charts (embedded as images; python-docx can't render SVG), and a
+    per-document breakdown table, in the same order the /analysis page
+    leads with now (insights first, charts after). Unlike the
+    single-document report, this doesn't re-list every comment -- that's
+    what the Excel export and each document's own report are for."""
     doc = Document()
     _add_branded_header(doc, "Multi-Document Analysis Report")
 
@@ -225,6 +227,14 @@ def build_multi_document_report(
     summary.add_run(f"   ·   {total_comments} total comment{'' if total_comments == 1 else 's'}")
     summary.add_run(f"   ·   {priority_count} need team discussion")
 
+    if insights and (insights.get("overview") or insights.get("themes")):
+        _add_section_heading(doc, "AI Insights")
+        doc.add_paragraph(insights["overview"])
+        for theme in insights.get("themes", []):
+            theme_p = doc.add_paragraph()
+            theme_p.add_run(theme["title"]).bold = True
+            doc.add_paragraph(theme["description"])
+
     if chart_rows:
         _add_section_heading(doc, "Comments by Category")
         chart_png = chart_images.render_bar_chart_png("Comments by category", chart_rows)
@@ -235,13 +245,23 @@ def build_multi_document_report(
         chart_png = chart_images.render_bar_chart_png("Comments by resolution status", resolution_chart_rows)
         doc.add_picture(io.BytesIO(chart_png), width=Inches(6.3))
 
-    if insights and (insights.get("overview") or insights.get("themes")):
-        _add_section_heading(doc, "AI Insights")
-        doc.add_paragraph(insights["overview"])
-        for theme in insights.get("themes", []):
-            theme_p = doc.add_paragraph()
-            theme_p.add_run(theme["title"]).bold = True
-            doc.add_paragraph(theme["description"])
+    if section_hotspot_rows:
+        _add_section_heading(doc, "Section Hotspots (Recurring Across Documents)")
+        doc.add_paragraph(
+            "Sections that drew comments in more than one document -- often a sign the "
+            "template's wording or instructions for that section are the recurring problem."
+        )
+        table = doc.add_table(rows=1, cols=3)
+        table.style = "Table Grid"
+        for cell, text in zip(table.rows[0].cells, ["Section", "Documents", "Comments"]):
+            cell.text = text
+            cell.paragraphs[0].runs[0].bold = True
+            _shade_cell(cell, _BRAND_TINT_HEX)
+        for hotspot in section_hotspot_rows:
+            row = table.add_row().cells
+            row[0].text = hotspot["section"]
+            row[1].text = str(hotspot["document_count"])
+            row[2].text = str(hotspot["count"])
 
     if document_summaries:
         _add_section_heading(doc, "By Document")

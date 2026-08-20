@@ -51,6 +51,7 @@ def build_workbook(
     chart_rows: list[dict],
     resolution_chart_rows: list[dict],
     all_comments: list[dict],
+    section_hotspot_rows: list[dict] | None = None,
 ) -> bytes:
     wb = Workbook()
 
@@ -83,6 +84,15 @@ def build_workbook(
         by_resolution.cell(row=row_num, column=1, value=row["label"])
         by_resolution.cell(row=row_num, column=2, value=row["count"])
     _autosize_columns(by_resolution, [24, 10])
+
+    if section_hotspot_rows:
+        by_section = wb.create_sheet("Section Hotspots")
+        _write_header_row(by_section, ["Section", "Documents", "Comment count"])
+        for row_num, row in enumerate(section_hotspot_rows, start=2):
+            by_section.cell(row=row_num, column=1, value=row["section"])
+            by_section.cell(row=row_num, column=2, value=row["document_count"])
+            by_section.cell(row=row_num, column=3, value=row["count"])
+        _autosize_columns(by_section, [48, 12, 14])
 
     all_comments_sheet = wb.create_sheet("All Comments")
     _write_header_row(
