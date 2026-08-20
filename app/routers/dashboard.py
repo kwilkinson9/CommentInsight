@@ -92,7 +92,7 @@ def _insights_context(conn: sqlite3.Connection) -> dict:
     }
 
 
-def _analysis_context(conn: sqlite3.Connection, error: str | None = None) -> dict:
+def _analysis_context(conn: sqlite3.Connection, active_tab: str = "insights", error: str | None = None) -> dict:
     data = analysis.gather(conn)
     priority_comments = [c for c in data["all_comments"] if c["is_priority"]]
     return {
@@ -102,6 +102,7 @@ def _analysis_context(conn: sqlite3.Connection, error: str | None = None) -> dic
         "resolution_statuses": storage.RESOLUTION_STATUSES,
         "resolution_labels": storage.RESOLUTION_LABELS,
         "classification_categories": CATEGORIES,
+        "active_tab": active_tab,
         "error": error,
     }
 
@@ -164,7 +165,12 @@ def index(request: Request, conn: sqlite3.Connection = Depends(get_db)):
 
 @router.get("/analysis")
 def view_analysis(request: Request, conn: sqlite3.Connection = Depends(get_db)):
-    return templates.TemplateResponse(request, "analysis.html", _analysis_context(conn))
+    return templates.TemplateResponse(request, "analysis.html", _analysis_context(conn, active_tab="insights"))
+
+
+@router.get("/analysis/charts")
+def view_analysis_charts(request: Request, conn: sqlite3.Connection = Depends(get_db)):
+    return templates.TemplateResponse(request, "analysis.html", _analysis_context(conn, active_tab="charts"))
 
 
 @router.post("/analysis/insights")
@@ -176,7 +182,7 @@ def create_analysis_insights(
     try:
         generate_insights(conn, generator)
     except Exception as exc:
-        context = _analysis_context(conn, error=f"Insight generation failed: {exc}")
+        context = _analysis_context(conn, active_tab="insights", error=f"Insight generation failed: {exc}")
         return templates.TemplateResponse(request, "analysis.html", context, status_code=502)
 
     return RedirectResponse("/analysis", status_code=303)

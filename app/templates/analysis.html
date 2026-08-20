@@ -29,70 +29,77 @@
   {% elif total_comments == 0 %}
     <div class="empty-state">Your uploaded documents don't have any comments yet.</div>
   {% else %}
-    {{ macros.bar_chart("Comments by category", chart_rows, "Comment counts by category across all documents") }}
-    {{ macros.bar_chart("Comments by resolution status", resolution_chart_rows, "Comment counts by resolution status across all documents") }}
+    <div class="tab-nav">
+      <a href="/analysis" class="tab-link{{ ' active' if active_tab == 'insights' else '' }}">Insights &amp; Priority</a>
+      <a href="/analysis/charts" class="tab-link{{ ' active' if active_tab == 'charts' else '' }}">Charts &amp; By Document</a>
+    </div>
 
-    <form class="filters" method="post" action="/analysis/insights">
-      {% if insights %}
-        <span class="muted">
-          AI insights generated {{ insights.created_at|friendly_date }}
-          {% if insights_stale %}&mdash; documents have changed since, may be out of date{% endif %}
-        </span>
-        <button type="submit">Regenerate insights</button>
-      {% else %}
-        <span class="muted">No AI insights generated yet</span>
-        <button type="submit">Find patterns across documents</button>
-      {% endif %}
-    </form>
+    {% if active_tab == 'charts' %}
+      {{ macros.bar_chart("Comments by category", chart_rows, "Comment counts by category across all documents") }}
+      {{ macros.bar_chart("Comments by resolution status", resolution_chart_rows, "Comment counts by resolution status across all documents") }}
 
-    {% if insights %}
-      <div class="chart-card">
-        <h3>AI Insights</h3>
-        <p>{{ insights.overview }}</p>
-        {% for theme in insights.themes %}
-          <div class="insight-theme">
-            <h4>{{ theme.title }}</h4>
-            <p>{{ theme.description }}</p>
-          </div>
-        {% endfor %}
-      </div>
-    {% endif %}
-
-    <h2>Needs team discussion ({{ priority_comments|length }})</h2>
-    {% if priority_comments %}
-      {% for c in priority_comments %}
-        {{ macros.comment_card(c, None, resolution_statuses, resolution_labels, classification_categories, "/analysis", show_document=True) }}
-      {% endfor %}
-    {% else %}
-      <div class="empty-state">Nothing flagged for discussion right now -- no Decision Required comments or reviewer disagreements across your documents.</div>
-    {% endif %}
-
-    <h2>By document</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>Filename</th>
-          <th>Comments</th>
-          <th>Needs discussion</th>
-          <th>Accepted</th>
-          <th>Rejected</th>
-          <th>CRM</th>
-          <th>No decision</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for doc in document_summaries %}
+      <h2>By document</h2>
+      <table>
+        <thead>
           <tr>
-            <td><a href="/documents/{{ doc.id }}">{{ doc.filename }}</a></td>
-            <td>{{ doc.total }}</td>
-            <td>{{ doc.priority_count }}</td>
-            <td>{{ doc.accepted }}</td>
-            <td>{{ doc.rejected }}</td>
-            <td>{{ doc.crm }}</td>
-            <td>{{ doc.no_decision }}</td>
+            <th>Filename</th>
+            <th>Comments</th>
+            <th>Needs discussion</th>
+            <th>Accepted</th>
+            <th>Rejected</th>
+            <th>CRM</th>
+            <th>No decision</th>
           </tr>
+        </thead>
+        <tbody>
+          {% for doc in document_summaries %}
+            <tr>
+              <td><a href="/documents/{{ doc.id }}">{{ doc.filename }}</a></td>
+              <td>{{ doc.total }}</td>
+              <td>{{ doc.priority_count }}</td>
+              <td>{{ doc.accepted }}</td>
+              <td>{{ doc.rejected }}</td>
+              <td>{{ doc.crm }}</td>
+              <td>{{ doc.no_decision }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <form class="filters" method="post" action="/analysis/insights">
+        {% if insights %}
+          <span class="muted">
+            AI insights generated {{ insights.created_at|friendly_date }}
+            {% if insights_stale %}&mdash; documents have changed since, may be out of date{% endif %}
+          </span>
+          <button type="submit">Regenerate insights</button>
+        {% else %}
+          <span class="muted">No AI insights generated yet</span>
+          <button type="submit">Find patterns across documents</button>
+        {% endif %}
+      </form>
+
+      {% if insights %}
+        <div class="chart-card">
+          <h3>AI Insights</h3>
+          <p>{{ insights.overview }}</p>
+          {% for theme in insights.themes %}
+            <div class="insight-theme">
+              <h4>{{ theme.title }}</h4>
+              <p>{{ theme.description }}</p>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+
+      <h2>Needs team discussion ({{ priority_comments|length }})</h2>
+      {% if priority_comments %}
+        {% for c in priority_comments %}
+          {{ macros.comment_card(c, None, resolution_statuses, resolution_labels, classification_categories, "/analysis", show_document=True) }}
         {% endfor %}
-      </tbody>
-    </table>
+      {% else %}
+        <div class="empty-state">Nothing flagged for discussion right now -- no Decision Required comments or reviewer disagreements across your documents.</div>
+      {% endif %}
+    {% endif %}
   {% endif %}
 {% endblock %}

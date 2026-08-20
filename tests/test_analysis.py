@@ -64,9 +64,27 @@ class AnalysisPageTests(unittest.TestCase):
     def test_per_document_table_lists_each_document(self):
         self._upload(SAMPLE, "a.docx")
         self._upload(NO_COMMENTS, "b.docx")
-        resp = self.client.get("/analysis")
+        resp = self.client.get("/analysis/charts")
         self.assertIn("a.docx", resp.text)
         self.assertIn("b.docx", resp.text)
+
+    def test_insights_tab_shows_insights_and_priority_queue_not_charts(self):
+        self._upload(SAMPLE, "a.docx")
+        resp = self.client.get("/analysis")
+        self.assertIn("Insights &amp; Priority", resp.text)
+        self.assertIn('class="tab-link active"', resp.text)
+        self.assertIn("Needs team discussion", resp.text)
+        self.assertNotIn("Comments by category", resp.text)
+        self.assertNotIn("By document", resp.text)
+
+    def test_charts_tab_shows_charts_and_by_document_not_insights(self):
+        self._upload(SAMPLE, "a.docx")
+        resp = self.client.get("/analysis/charts")
+        self.assertIn("Comments by category", resp.text)
+        self.assertIn("Comments by resolution status", resp.text)
+        self.assertIn("By document", resp.text)
+        self.assertNotIn("Needs team discussion", resp.text)
+        self.assertNotIn("Find patterns across documents", resp.text)
 
     def test_export_links_present_when_there_are_comments(self):
         self._upload(SAMPLE, "a.docx")

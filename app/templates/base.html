@@ -129,6 +129,27 @@
       flex-wrap: wrap;
     }
 
+    .tab-nav {
+      display: flex;
+      gap: 0.25rem;
+      border-bottom: 1px solid var(--border);
+      margin: 1.1rem 0 1.25rem;
+    }
+    .tab-link {
+      padding: 0.6rem 1rem;
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-decoration: none;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+    }
+    .tab-link:hover { color: var(--text); }
+    .tab-link.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
     .how-it-works {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
