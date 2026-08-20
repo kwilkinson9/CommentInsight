@@ -13,6 +13,11 @@ schtasks /Create /TN "%TASKNAME%" /TR "wscript.exe \"%VBSPATH%\"" /SC ONLOGON /R
 if %ERRORLEVEL% NEQ 0 (
     echo.
     echo Something went wrong registering the task -- see the message above.
+    echo.
+    echo If that said "Access is denied," Task Scheduler is likely locked down
+    echo on this computer (common on managed/work machines). Try
+    echo install_startup_shortcut.bat instead -- it does the same thing a
+    echo different way that doesn't need those permissions.
     pause
     exit /b 1
 )

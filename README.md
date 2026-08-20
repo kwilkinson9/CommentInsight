@@ -66,14 +66,21 @@ One-time setup, after you've done the first-time setup above:
    confirm, and start the server right away.
 3. Open **http://127.0.0.1:8000** to confirm it's running.
 
+If step 2 says **"ERROR: Access is denied"**, Task Scheduler is locked down
+on this computer -- common on managed/work machines. Double-click
+**`install_startup_shortcut.bat`** instead; it does the same thing a
+different way (a shortcut in your own Startup folder) that doesn't need
+those permissions.
+
 From now on, the server starts by itself whenever you log in -- just open
 that same address in your browser.
 
 **Other scripts in that folder:**
 - **`stop_server.bat`** -- stops the server if it's currently running.
   Use this before an update (see below), or any time you want it off.
-- **`uninstall_startup_task.bat`** -- removes the auto-start. Run
-  `stop_server.bat` too if it's currently running.
+- **`uninstall_startup_task.bat`** / **`uninstall_startup_shortcut.bat`** --
+  removes whichever auto-start method you used. Run `stop_server.bat` too
+  if it's currently running.
 
 ## Getting updates
 
