@@ -116,6 +116,26 @@ class ResolutionAndConflictTests(unittest.TestCase):
         comments = self.client.get("/api/documents/1/comments").json()
         self.assertIsNone(next(c for c in comments if c["id"] == comment_id)["resolution_status"])
 
+    def test_comment_forms_redirect_back_to_the_comment_they_just_saved(self):
+        # Regression test: every save used to reload the page at the top,
+        # losing your place in a long list. The resolution/category forms
+        # now redirect back to a URL fragment anchored on the specific
+        # comment (id="comment-{id}") so the browser scrolls back to it
+        # instead of resetting to the top of the page.
+        self._upload_sample()
+        comment_id = self._db_id_for_external_id("3")
+
+        page = self.client.get("/documents/1")
+        self.assertIn(f'id="comment-{comment_id}"', page.text)
+        self.assertIn(f'value="/documents/1?sort=document#comment-{comment_id}"', page.text)
+
+        resp = self.client.post(
+            f"/documents/1/comments/{comment_id}/resolution",
+            data={"status": "accepted", "next": f"/documents/1?sort=document#comment-{comment_id}"},
+        )
+        self.assertEqual(resp.status_code, 303)
+        self.assertEqual(resp.headers["location"], f"/documents/1?sort=document#comment-{comment_id}")
+
     def test_rejects_unknown_resolution_status(self):
         self._upload_sample()
         comment_id = self._db_id_for_external_id("0")

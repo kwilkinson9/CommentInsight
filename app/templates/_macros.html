@@ -1,6 +1,7 @@
 {% macro comment_card(c, document_id, resolution_statuses, resolution_labels, classification_categories, next_url, show_document=False) %}
   {% set document_id = c.document_id if show_document else document_id %}
-  <article class="comment-card{{ ' comment-card-priority' if c.is_priority else '' }}">
+  {% set anchored_next_url = next_url ~ "#comment-" ~ c.id %}
+  <article class="comment-card{{ ' comment-card-priority' if c.is_priority else '' }}" id="comment-{{ c.id }}">
     <div class="comment-card-header{{ ' comment-card-header-with-document' if show_document else '' }}">
       {% if show_document %}
         <div>
@@ -31,7 +32,7 @@
           {% endif %}
         </div>
         <form method="post" action="/documents/{{ document_id }}/comments/{{ c.id }}/category" class="category-form">
-          <input type="hidden" name="next" value="{{ next_url }}">
+          <input type="hidden" name="next" value="{{ anchored_next_url }}">
           <select name="category" onchange="this.form.submit()">
             <option value="" {{ "selected" if not c.category else "" }}>Not classified</option>
             {% for cat in classification_categories %}
@@ -43,7 +44,7 @@
       <div>
         <span class="field-label">Resolution</span>
         <form method="post" action="/documents/{{ document_id }}/comments/{{ c.id }}/resolution" class="resolution-form">
-          <input type="hidden" name="next" value="{{ next_url }}">
+          <input type="hidden" name="next" value="{{ anchored_next_url }}">
           <select name="status">
             <option value="" {{ "selected" if not c.resolution_status else "" }}>No decision yet</option>
             {% for status in resolution_statuses %}

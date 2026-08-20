@@ -129,6 +129,19 @@ class ClassificationTests(unittest.TestCase):
         self.assertEqual(comment["category"], "Editorial")
         self.assertEqual(comment["rationale"], "Set manually by the writer.")
 
+    def test_category_form_redirects_back_to_the_comment_anchor(self):
+        self._upload_sample()
+        comment_id = self._db_id_for_external_id("0")
+
+        page = self.client.get("/documents/1")
+        self.assertIn(f'value="/documents/1?sort=document#comment-{comment_id}"', page.text)
+
+        resp = self.client.post(
+            f"/documents/1/comments/{comment_id}/category",
+            data={"category": "Editorial", "next": f"/documents/1?sort=document#comment-{comment_id}"},
+        )
+        self.assertEqual(resp.headers["location"], f"/documents/1?sort=document#comment-{comment_id}")
+
     def test_manual_category_overrides_ai_classification(self):
         self._upload_sample()
         self.client.post("/documents/1/classify")  # everything -> "Other" via FakeClassifier
