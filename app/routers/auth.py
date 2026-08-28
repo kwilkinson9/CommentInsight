@@ -85,3 +85,55 @@ async def reset_password_submit(token: str, request: Request, conn: sqlite3.Conn
     return templates.TemplateResponse(
         request, "login.html", {"error": None, "message": "Password updated -- log in with your new password."}
     )
+
+
+_INVALID_INVITE_MESSAGE = "This invite link is invalid, expired, or already used. Ask whoever invited you for a new one."
+
+
+@router.get("/accept-invite/{token}")
+def accept_invite_form(token: str, request: Request, conn: sqlite3.Connection = Depends(get_db)):
+    invite = auth.get_valid_invite(conn, token)
+    if invite is None:
+        return templates.TemplateResponse(
+            request, "accept_invite.html", {"error": _INVALID_INVITE_MESSAGE, "token": None, "email": None}, status_code=400
+        )
+    return templates.TemplateResponse(request, "accept_invite.html", {"error": None, "token": token, "email": invite["email"]})
+
+
+@router.post("/accept-invite/{token}")
+async def accept_invite_submit(token: str, request: Request, conn: sqlite3.Connection = Depends(get_db)):
+    invite = auth.get_valid_invite(conn, token)
+    if invite is None:
+        return templates.TemplateResponse(
+            request, "accept_invite.html", {"error": _INVALID_INVITE_MESSAGE, "token": None, "email": None}, status_code=400
+        )
+
+    form = await request.form()
+    password = form.get("password") or ""
+    confirm = form.get("confirm_password") or ""
+
+    if len(password) < 8:
+        return templates.TemplateResponse(
+            request,
+            "accept_invite.html",
+            {"error": "Use at least 8 characters.", "token": token, "email": invite["email"]},
+            status_code=400,
+        )
+    if password != confirm:
+        return templates.TemplateResponse(
+            request,
+            "accept_invite.html",
+            {"error": "Passwords didn't match.", "token": token, "email": invite["email"]},
+            status_code=400,
+        )
+
+    user_id = auth.accept_invite(conn, token, password)
+    if user_id is None:
+        return templates.TemplateResponse(
+            request, "accept_invite.html", {"error": _INVALID_INVITE_MESSAGE, "token": None, "email": None}, status_code=400
+        )
+
+    request.session.clear()
+    request.session["user_id"] = user_id
+    request.session["email"] = invite["email"]
+    return RedirectResponse("/", status_code=303)

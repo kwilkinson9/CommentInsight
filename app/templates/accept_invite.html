@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Create your account - Comment Insight{% endblock %}
+{% block content %}
+  <div class="login-wrap">
+    <h1>Create your account</h1>
+
+    {% if error %}
+      <div class="error">{{ error }}</div>
+    {% endif %}
+
+    {% if token %}
+      <p class="muted">You're setting up <strong>{{ email }}</strong>.</p>
+      <form method="post" action="/accept-invite/{{ token }}" class="login-form">
+        <div>
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" required autofocus>
+        </div>
+        <div>
+          <label for="confirm_password">Confirm password</label>
+          <input type="password" id="confirm_password" name="confirm_password" required>
+        </div>
+        <button type="submit">Create account</button>
+      </form>
+    {% else %}
+      <p><a href="/login">Back to login</a></p>
+    {% endif %}
+  </div>
+{% endblock %}

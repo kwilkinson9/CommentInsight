@@ -48,16 +48,35 @@ Never share this file or commit it -- it's already listed in `.gitignore`.
 
 ## Accounts
 
-Comment Insight requires logging in -- there's no open self-signup. To create
-an account (your own, or a tester's), run:
+Comment Insight requires logging in -- there's no open self-signup.
 
+**Your own account** (so you can log in and use the app yourself): run
 ```
 python3 scripts/create_user.py
 ```
+It'll prompt for an email and password.
 
-It'll prompt for an email and password. Run it once per person who needs
-access. Running it again with the same email just reports it already
-exists -- for a forgotten password, see below.
+**Inviting a tester.** This is the normal way anyone besides you gets an
+account -- you don't need to run `create_user.py` for them too. Run:
+```
+python3 scripts/invite_user.py
+```
+It prompts for their email and sends them a branded Comment Insight /
+Dossentra invite email with a one-time signup link -- they click it, pick
+their own password, and they're in. The link works once and expires after
+7 days.
+
+Sending the actual email needs a one-time setup with
+[Resend](https://resend.com) (a transactional email service):
+1. Sign up at resend.com and verify a sending domain (it walks you through
+   adding a couple of DNS records to whatever domain you're sending from).
+2. Copy the API key it gives you into `.env` as `RESEND_API_KEY`.
+3. Set `INVITE_FROM_EMAIL` in `.env` to an address on that verified domain,
+   e.g. `Comment Insight <invites@yourdomain.com>`.
+
+Until that's set up, `invite_user.py` still works -- it just prints the
+signup link instead of emailing it, so you can send it yourself another way
+in the meantime.
 
 **Forgotten password.** There's no self-service "forgot password" link in
 the app -- instead, whoever manages the server runs:

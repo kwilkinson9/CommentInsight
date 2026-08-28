@@ -34,6 +34,11 @@ _LOGIN_ATTEMPT_WINDOW_SECONDS = 15 * 60
 # a tester who's sent one has a reasonable window to act on it.
 _RESET_TOKEN_TTL_SECONDS = 60 * 60
 
+# Invites get a longer window than resets -- they're not a "someone's locked
+# out right now" recovery link, and a tester might not get to onboarding
+# the same day it's sent.
+_INVITE_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60
+
 # bcrypt's cost factor is deliberately expensive (that's the point -- it
 # slows down offline brute-forcing of a stolen hash). 12 is a solid default
 # for real accounts; the test suite creates throwaway users constantly and
@@ -197,6 +202,63 @@ def reset_password(conn: sqlite3.Connection, raw_token: str, new_password: str) 
     )
     conn.commit()
     return True
+
+
+def create_invite(conn: sqlite3.Connection, email: str) -> str:
+    """Admin-facing: generates a one-time signup token for the given email.
+    Raises ValueError (safe to show whoever's inviting) if an account
+    already exists for that email -- catches the "meant to invite someone
+    new, typo'd an existing tester's address" mistake immediately instead
+    of producing a link that fails later."""
+    email = email.strip().lower()
+    if get_user_by_email(conn, email) is not None:
+        raise ValueError(f"An account already exists for {email}.")
+
+    raw_token = secrets.token_urlsafe(32)
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(seconds=_INVITE_TOKEN_TTL_SECONDS)
+    conn.execute(
+        "INSERT INTO invites (email, token_hash, created_at, expires_at) VALUES (?, ?, ?, ?)",
+        (email, _hash_token(raw_token), now.isoformat(), expires_at.isoformat()),
+    )
+    conn.commit()
+    return raw_token
+
+
+def get_valid_invite(conn: sqlite3.Connection, raw_token: str) -> dict | None:
+    """Returns the invite row if raw_token is real, unaccepted, and
+    unexpired -- None otherwise."""
+    row = conn.execute("SELECT * FROM invites WHERE token_hash = ?", (_hash_token(raw_token),)).fetchone()
+    if row is None:
+        return None
+    row = dict(row)
+    if row["accepted_at"] is not None:
+        return None
+    if datetime.fromisoformat(row["expires_at"]) < datetime.now(timezone.utc):
+        return None
+    return row
+
+
+def accept_invite(conn: sqlite3.Connection, raw_token: str, password: str) -> int | None:
+    """Consumes an invite token, creating the account it names. Returns the
+    new user's id, or None if the token is missing/expired/already used --
+    or if the invited email was somehow claimed in the meantime, in which
+    case the invite is still spent so it can't be retried."""
+    invite = get_valid_invite(conn, raw_token)
+    if invite is None:
+        return None
+
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        user_id = create_user(conn, invite["email"], password)
+    except ValueError:
+        conn.execute("UPDATE invites SET accepted_at = ? WHERE id = ?", (now, invite["id"]))
+        conn.commit()
+        return None
+
+    conn.execute("UPDATE invites SET accepted_at = ? WHERE id = ?", (now, invite["id"]))
+    conn.commit()
+    return user_id
 
 
 def require_user(request: Request, conn: sqlite3.Connection = Depends(get_db)) -> dict:

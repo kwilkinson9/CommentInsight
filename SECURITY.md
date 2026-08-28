@@ -80,8 +80,8 @@ actually verified to work.
 
 ## Now built: admin-generated password reset links
 
-There's still no open self-signup or self-initiated "forgot password" flow
-(the app never sends email), but a forgotten password no longer requires
+There's still no self-initiated "forgot password" flow -- a tester can't
+trigger this themselves -- but a forgotten password no longer requires
 recreating the account:
 
 - Whoever manages the server runs `scripts/reset_password.py` with the
@@ -97,6 +97,29 @@ recreating the account:
   shows the same "invalid or expired" message rather than confirming which
   case it was.
 
+## Now built: branded invite emails via Resend
+
+Still no open self-signup -- accounts still only come into existence
+through someone with server access. What's changed is how a new tester
+gets from "invited" to "has a working login":
+
+- Whoever manages the server runs `scripts/invite_user.py` with the
+  tester's email. It creates a single-use, 7-day signup token (same
+  hashed-in-the-database pattern as reset tokens, in a new `invites`
+  table) and, if `RESEND_API_KEY` is configured, emails them a branded
+  link via [Resend](https://resend.com), a third-party transactional email
+  service. **This is the one new place a tester's email address leaves
+  this app for something other than the AI calls already covered below**
+  — Resend only ever sees the address being invited and the email content
+  itself, nothing about documents or comments.
+- If Resend isn't configured yet, the invite is still created and the link
+  is printed for the admin to send manually — nothing is blocked on
+  setting up email.
+- The tester clicks the link, picks their own password, and is logged in
+  immediately — the account is created at that point, not when the invite
+  was sent. An expired, already-used, or made-up invite link shows the
+  same generic "invalid or expired" message as an invalid reset link.
+
 ## Current state: AI calls and secrets
 
 - **AI calls (Anthropic API).** Classification, conflict detection, and
@@ -108,12 +131,13 @@ recreating the account:
   - It's retained for a short window (currently around 7 days) for abuse
     monitoring, then automatically deleted.
   - This is *not* Zero Data Retention — see "Still outstanding" below.
-- **Secrets.** The Anthropic API key and the session-signing key both live
-  only in a local `.env` file (gitignored, never committed). Neither is
-  ever typed into chat or committed to source control. If either is ever
-  exposed, rotate it immediately (API key at console.anthropic.com;
-  session key by generating a new one and restarting the app, which logs
-  everyone out).
+- **Secrets.** The Anthropic API key, the session-signing key, and (if
+  configured) the Resend API key all live only in a local `.env` file
+  (gitignored, never committed). None of them are ever typed into chat or
+  committed to source control. If any is ever exposed, rotate it
+  immediately (Anthropic key at console.anthropic.com; Resend key at
+  resend.com; session key by generating a new one and restarting the app,
+  which logs everyone out).
 
 ## Still outstanding — before real sponsor data is involved
 
