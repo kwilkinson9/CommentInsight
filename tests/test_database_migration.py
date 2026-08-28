@@ -45,6 +45,33 @@ class MigrationTests(unittest.TestCase):
             self.assertIsNone(row["note"])
             conn.close()
 
+    def test_pre_auth_database_folds_orphaned_documents_into_a_new_account(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = pathlib.Path(tmpdir) / "old.db"
+
+            # Simulate a database from before user accounts existed at all --
+            # no users table, documents has no user_id column.
+            raw = sqlite3.connect(db_path)
+            raw.executescript(
+                """
+                CREATE TABLE documents (id INTEGER PRIMARY KEY, filename TEXT NOT NULL, uploaded_at TEXT NOT NULL);
+                INSERT INTO documents (id, filename, uploaded_at) VALUES (1, 'old.docx', '2026-01-01T00:00:00Z');
+                INSERT INTO documents (id, filename, uploaded_at) VALUES (2, 'old2.docx', '2026-01-02T00:00:00Z');
+                """
+            )
+            raw.commit()
+            raw.close()
+
+            conn = get_connection(db_path)
+
+            users = conn.execute("SELECT * FROM users").fetchall()
+            self.assertEqual(len(users), 1)
+            self.assertEqual(users[0]["email"], "local@commentinsight.local")
+
+            rows = conn.execute("SELECT id, user_id FROM documents ORDER BY id").fetchall()
+            self.assertEqual([r["user_id"] for r in rows], [users[0]["id"], users[0]["id"]])
+            conn.close()
+
 
 if __name__ == "__main__":
     unittest.main()

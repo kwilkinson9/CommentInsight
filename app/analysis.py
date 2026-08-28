@@ -10,13 +10,14 @@ import sqlite3
 from app import charts, storage
 
 
-def gather(conn: sqlite3.Connection) -> dict:
-    """One pass over every document: a flat list of all its comments
-    (tagged with which document they came from, conflicts attached, priority
-    computed -- the same shape _document_context uses for a single document),
-    a per-document summary row, and the same chart data the single-document
-    page uses, just fed the combined comment list."""
-    documents = storage.list_documents(conn)
+def gather(conn: sqlite3.Connection, user_id: int) -> dict:
+    """One pass over every document *owned by user_id*: a flat list of all
+    its comments (tagged with which document they came from, conflicts
+    attached, priority computed -- the same shape _document_context uses
+    for a single document), a per-document summary row, and the same chart
+    data the single-document page uses, just fed the combined comment
+    list."""
+    documents = storage.list_documents(conn, user_id)
     all_comments: list[dict] = []
     document_summaries: list[dict] = []
 

@@ -3,19 +3,15 @@ logic in app/reports.py directly, and the /documents/{id}/export route."""
 
 import io
 import pathlib
-import shutil
 import sys
-import tempfile
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from docx import Document as DocxDocument
-from fastapi.testclient import TestClient
 
-from app import reports, storage
-from app.database import get_connection, get_db
-from app.main import app
+from app import reports
+from tests.auth_helpers import AuthenticatedTestCase
 
 SAMPLE = pathlib.Path(__file__).parent / "sample_docs" / "comment_insight_synthetic_sample.docx"
 
@@ -134,25 +130,7 @@ class BuildReportTests(unittest.TestCase):
         self.assertIn("0 total comments", text)
 
 
-class ExportRouteTests(unittest.TestCase):
-    def setUp(self):
-        self.tmpdir = pathlib.Path(tempfile.mkdtemp())
-        self.db_path = self.tmpdir / "test.db"
-
-        def override_get_db():
-            conn = get_connection(self.db_path)
-            try:
-                yield conn
-            finally:
-                conn.close()
-
-        app.dependency_overrides[get_db] = override_get_db
-        self.client = TestClient(app, follow_redirects=False)
-
-    def tearDown(self):
-        app.dependency_overrides.clear()
-        shutil.rmtree(self.tmpdir, ignore_errors=True)
-
+class ExportRouteTests(AuthenticatedTestCase):
     def _upload_sample(self):
         with open(SAMPLE, "rb") as f:
             return self.client.post(

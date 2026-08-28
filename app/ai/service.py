@@ -80,11 +80,12 @@ def detect_conflicts_for_document(
     return len(db_pairs)
 
 
-def generate_insights(conn: sqlite3.Connection, generator: InsightsGenerator) -> AnalysisInsights:
-    """Generate cross-document insights and persist them, replacing whatever
-    was generated before. Reuses analysis.gather() so this sees exactly the
-    same comment data the analysis page and its exports show."""
-    data = analysis.gather(conn)
+def generate_insights(conn: sqlite3.Connection, user_id: int, generator: InsightsGenerator) -> AnalysisInsights:
+    """Generate cross-document insights for one user's documents and
+    persist them, replacing whatever was generated before for them. Reuses
+    analysis.gather() so this sees exactly the same comment data the
+    analysis page and its exports show."""
+    data = analysis.gather(conn, user_id)
     comments = [
         InsightComment(
             document_filename=c["document_filename"],
@@ -101,6 +102,7 @@ def generate_insights(conn: sqlite3.Connection, generator: InsightsGenerator) ->
 
     storage.save_insights(
         conn,
+        user_id,
         overview=result.overview,
         themes_json=json.dumps([{"title": t.title, "description": t.description} for t in result.themes]),
         document_count=data["total_documents"],

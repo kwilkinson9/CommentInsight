@@ -13,7 +13,15 @@ from app.ingestion.docx_parser import Comment, extract_comments
 UPLOAD_DIR = Path(__file__).resolve().parent.parent / "data" / "uploads"
 
 
-def ingest_uploaded_file(conn: sqlite3.Connection, filename: str, content: bytes) -> int:
+def _upload_path(user_id: int, document_id: int, filename: str) -> Path:
+    """Uploaded files live under a per-user subdirectory -- filesystem-level
+    isolation on top of the DB-level user_id filtering, and it means two
+    users' files can never collide on disk even with the same filename."""
+    safe_name = Path(filename).name  # strip any directory components
+    return UPLOAD_DIR / str(user_id) / f"{document_id}_{safe_name}"
+
+
+def ingest_uploaded_file(conn: sqlite3.Connection, user_id: int, filename: str, content: bytes) -> int:
     """Save an uploaded .docx, extract its comments, and store everything.
 
     Shared by the JSON API and the HTML upload form so extraction/storage
@@ -24,7 +32,7 @@ def ingest_uploaded_file(conn: sqlite3.Connection, filename: str, content: bytes
     if not filename.lower().endswith(".docx"):
         raise ValueError("Only .docx files are supported.")
 
-    document_id, saved_path = save_document(conn, filename, content)
+    document_id, saved_path = save_document(conn, user_id, filename, content)
     try:
         comments = extract_comments(saved_path)
     except (zipfile.BadZipFile, ValueError) as exc:
@@ -34,23 +42,23 @@ def ingest_uploaded_file(conn: sqlite3.Connection, filename: str, content: bytes
     return document_id
 
 
-def save_document(conn: sqlite3.Connection, filename: str, content: bytes) -> tuple[int, Path]:
-    """Insert a documents row and write the uploaded file to disk.
+def save_document(conn: sqlite3.Connection, user_id: int, filename: str, content: bytes) -> tuple[int, Path]:
+    """Insert a documents row (owned by user_id) and write the uploaded file
+    to disk.
 
     Returns (document_id, saved_path). The original file is kept on disk
     untouched -- comment extraction always re-reads it, nothing is derived
     from a mutated copy.
     """
     cursor = conn.execute(
-        "INSERT INTO documents (filename, uploaded_at) VALUES (?, ?)",
-        (filename, datetime.now(timezone.utc).isoformat()),
+        "INSERT INTO documents (user_id, filename, uploaded_at) VALUES (?, ?, ?)",
+        (user_id, filename, datetime.now(timezone.utc).isoformat()),
     )
     document_id = cursor.lastrowid
     conn.commit()
 
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    safe_name = Path(filename).name  # strip any directory components
-    saved_path = UPLOAD_DIR / f"{document_id}_{safe_name}"
+    saved_path = _upload_path(user_id, document_id, filename)
+    saved_path.parent.mkdir(parents=True, exist_ok=True)
     saved_path.write_bytes(content)
     return document_id, saved_path
 
@@ -94,21 +102,39 @@ def save_comments(conn: sqlite3.Connection, document_id: int, comments: list[Com
     return external_to_db_id
 
 
-def list_documents(conn: sqlite3.Connection) -> list[dict]:
+def list_documents(conn: sqlite3.Connection, user_id: int) -> list[dict]:
     rows = conn.execute(
         """
         SELECT d.id, d.filename, d.uploaded_at, COUNT(c.id) AS comment_count
         FROM documents d
         LEFT JOIN comments c ON c.document_id = d.id
+        WHERE d.user_id = ?
         GROUP BY d.id
         ORDER BY d.uploaded_at DESC
-        """
+        """,
+        (user_id,),
     ).fetchall()
     return [dict(row) for row in rows]
 
 
-def get_document(conn: sqlite3.Connection, document_id: int) -> dict | None:
-    row = conn.execute("SELECT * FROM documents WHERE id = ?", (document_id,)).fetchone()
+def get_document(conn: sqlite3.Connection, document_id: int, user_id: int) -> dict | None:
+    """Returns None both when the document doesn't exist and when it
+    belongs to someone else -- the two cases are indistinguishable on
+    purpose, so a guessed document_id can't be used to probe whether it
+    exists under another account."""
+    row = conn.execute(
+        "SELECT * FROM documents WHERE id = ? AND user_id = ?", (document_id, user_id)
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def get_comment(conn: sqlite3.Connection, comment_id: int) -> dict | None:
+    """Raw comment row, including document_id -- callers that receive both
+    a document_id (from the URL) and a comment_id use this to confirm the
+    comment actually belongs to that document before acting on it, so a
+    request naming one of *your* documents can't be used to modify a
+    comment that actually belongs to somebody else's."""
+    row = conn.execute("SELECT * FROM comments WHERE id = ?", (comment_id,)).fetchone()
     return dict(row) if row else None
 
 
@@ -133,11 +159,11 @@ def _delete_comments_and_derived_data(conn: sqlite3.Connection, document_id: int
     conn.commit()
 
 
-def delete_document(conn: sqlite3.Connection, document_id: int) -> bool:
+def delete_document(conn: sqlite3.Connection, document_id: int, user_id: int) -> bool:
     """Delete a document and everything derived from it, plus the uploaded
-    file on disk. Returns False if the document didn't exist, True
-    otherwise."""
-    document = get_document(conn, document_id)
+    file on disk. Returns False if the document didn't exist *or belongs to
+    someone else* -- both look the same to the caller, True otherwise."""
+    document = get_document(conn, document_id, user_id)
     if document is None:
         return False
 
@@ -145,14 +171,14 @@ def delete_document(conn: sqlite3.Connection, document_id: int) -> bool:
     conn.execute("DELETE FROM documents WHERE id = ?", (document_id,))
     conn.commit()
 
-    safe_name = Path(document["filename"]).name
-    saved_path = UPLOAD_DIR / f"{document_id}_{safe_name}"
-    saved_path.unlink(missing_ok=True)
+    _upload_path(user_id, document_id, document["filename"]).unlink(missing_ok=True)
 
     return True
 
 
-def replace_document_with_revision(conn: sqlite3.Connection, document_id: int, filename: str, content: bytes) -> dict:
+def replace_document_with_revision(
+    conn: sqlite3.Connection, document_id: int, user_id: int, filename: str, content: bytes
+) -> dict:
     """Re-extracts comments from a revised .docx and swaps them in, carrying
     forward each comment's classification/resolution/note wherever the new
     file has a comment from the same reviewer with identical text -- the one
@@ -171,7 +197,7 @@ def replace_document_with_revision(conn: sqlite3.Connection, document_id: int, f
     Returns {"carried_forward": n, "new_comments": n, "removed_comments": n}
     so the caller can tell the writer what happened to their prior work.
     """
-    document = get_document(conn, document_id)
+    document = get_document(conn, document_id, user_id)
     if document is None:
         raise ValueError("Document not found.")
     if not filename.lower().endswith(".docx"):
@@ -203,12 +229,11 @@ def replace_document_with_revision(conn: sqlite3.Connection, document_id: int, f
     removed_count = sum(len(bucket) for bucket in old_by_key.values())
     new_count = len(new_comments) - carried_count
 
-    old_safe_name = Path(document["filename"]).name
-    (UPLOAD_DIR / f"{document_id}_{old_safe_name}").unlink(missing_ok=True)
+    _upload_path(user_id, document_id, document["filename"]).unlink(missing_ok=True)
 
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    new_safe_name = Path(filename).name
-    (UPLOAD_DIR / f"{document_id}_{new_safe_name}").write_bytes(content)
+    new_path = _upload_path(user_id, document_id, filename)
+    new_path.parent.mkdir(parents=True, exist_ok=True)
+    new_path.write_bytes(content)
 
     conn.execute(
         "UPDATE documents SET filename = ?, uploaded_at = ? WHERE id = ?",
@@ -424,30 +449,34 @@ def list_unclassified_comments(conn: sqlite3.Connection, document_id: int) -> li
 
 def save_insights(
     conn: sqlite3.Connection,
+    user_id: int,
     overview: str,
     themes_json: str,
     document_count: int,
     comment_count: int,
     model: str,
 ) -> None:
-    """Persist the latest cross-document insights, replacing whatever was
-    generated before -- like conflict detection, this is always a fresh
-    full re-analysis, so there's no reason to keep old runs around.
-    document_count/comment_count are recorded so the analysis page can tell
-    the writer if the documents have changed since insights were generated."""
-    conn.execute("DELETE FROM analysis_insights")
+    """Persist the latest cross-document insights for one user, replacing
+    whatever was generated before for them -- like conflict detection, this
+    is always a fresh full re-analysis, so there's no reason to keep old
+    runs around. document_count/comment_count are recorded so the analysis
+    page can tell the writer if their documents have changed since insights
+    were generated."""
+    conn.execute("DELETE FROM analysis_insights WHERE user_id = ?", (user_id,))
     conn.execute(
         """
-        INSERT INTO analysis_insights (overview, themes_json, document_count, comment_count, model, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO analysis_insights (user_id, overview, themes_json, document_count, comment_count, model, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
-        (overview, themes_json, document_count, comment_count, model, datetime.now(timezone.utc).isoformat()),
+        (user_id, overview, themes_json, document_count, comment_count, model, datetime.now(timezone.utc).isoformat()),
     )
     conn.commit()
 
 
-def get_latest_insights(conn: sqlite3.Connection) -> dict | None:
-    row = conn.execute("SELECT * FROM analysis_insights ORDER BY id DESC LIMIT 1").fetchone()
+def get_latest_insights(conn: sqlite3.Connection, user_id: int) -> dict | None:
+    row = conn.execute(
+        "SELECT * FROM analysis_insights WHERE user_id = ? ORDER BY id DESC LIMIT 1", (user_id,)
+    ).fetchone()
     return dict(row) if row else None
 
 

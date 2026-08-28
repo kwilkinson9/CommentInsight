@@ -6,20 +6,17 @@ Uses a fake AI implementation -- no real, paid API calls."""
 
 import io
 import pathlib
-import shutil
 import sys
-import tempfile
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from docx import Document as DocxDocument
-from fastapi.testclient import TestClient
 
 from app.ai.base import AnalysisInsights, InsightsGenerator, InsightTheme
-from app.database import get_connection, get_db
 from app.main import app
 from app.routers.dashboard import get_insights_generator
+from tests.auth_helpers import AuthenticatedTestCase
 
 SAMPLE = pathlib.Path(__file__).parent / "sample_docs" / "comment_insight_synthetic_sample.docx"
 
@@ -53,26 +50,11 @@ class BrokenInsightsGenerator(InsightsGenerator):
         raise RuntimeError("simulated API failure")
 
 
-class InsightsTests(unittest.TestCase):
+class InsightsTests(AuthenticatedTestCase):
     def setUp(self):
-        self.tmpdir = pathlib.Path(tempfile.mkdtemp())
-        self.db_path = self.tmpdir / "test.db"
-
-        def override_get_db():
-            conn = get_connection(self.db_path)
-            try:
-                yield conn
-            finally:
-                conn.close()
-
+        super().setUp()
         self.fake_generator = FakeInsightsGenerator()
-        app.dependency_overrides[get_db] = override_get_db
         app.dependency_overrides[get_insights_generator] = lambda: self.fake_generator
-        self.client = TestClient(app, follow_redirects=False)
-
-    def tearDown(self):
-        app.dependency_overrides.clear()
-        shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def _upload(self, name="a.docx"):
         with open(SAMPLE, "rb") as f:

@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Log in - Comment Insight{% endblock %}
+{% block content %}
+  <div class="login-wrap">
+    <h1>Log in</h1>
+    <p class="muted">Comment Insight is invite-only during testing. If you don't have an account yet, ask whoever set this up for you.</p>
+
+    {% if error %}
+      <div class="error">{{ error }}</div>
+    {% endif %}
+
+    <form method="post" action="/login" class="login-form">
+      <div>
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" required autofocus>
+      </div>
+      <div>
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required>
+      </div>
+      <button type="submit">Log in</button>
+    </form>
+  </div>
+{% endblock %}

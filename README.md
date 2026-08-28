@@ -29,9 +29,29 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Then open `.env` in a text editor and paste your Anthropic API key in place of
-`sk-ant-...`. Never share this file or commit it -- it's already listed in
-`.gitignore`.
+Then open `.env` in a text editor:
+- Paste your Anthropic API key in place of `sk-ant-...`.
+- Generate a session secret and paste it in place of `SESSION_SECRET_KEY=`:
+  ```
+  python3 -c "import secrets; print(secrets.token_hex(32))"
+  ```
+  The app won't start without this set -- it's what signs login sessions.
+
+Never share this file or commit it -- it's already listed in `.gitignore`.
+
+## Accounts
+
+Comment Insight requires logging in -- there's no open self-signup. To create
+an account (your own, or a tester's), run:
+
+```
+python3 scripts/create_user.py
+```
+
+It'll prompt for an email and password. Run it once per person who needs
+access. There's no in-app way to reset a forgotten password yet -- run this
+script again with the same email to see the "already exists" message, or ask
+whoever manages the server to help.
 
 ## Running the server
 
@@ -82,6 +102,23 @@ that same address in your browser.
   removes whichever auto-start method you used. Run `stop_server.bat` too
   if it's currently running.
 
+## Running this as a shared server
+
+If more than one person reaches this over a network (not just
+`http://127.0.0.1` on your own machine), two things in `.env` change:
+
+- `SESSION_COOKIE_SECURE=true` -- marks login cookies HTTPS-only. This
+  **requires** the server actually be behind HTTPS first (a reverse proxy
+  with a real TLS certificate), or login will silently fail to persist.
+- Create an account per person with `scripts/create_user.py` (above) --
+  don't share one login between testers, since documents are private to
+  the account that uploaded them.
+
+Provisioning the actual host, domain, and TLS certificate is outside what's
+in this repo -- see `SECURITY.md` for the rest of what a real shared
+deployment needs (encryption at rest, a Zero Data Retention agreement with
+Anthropic if real sponsor data is involved, etc.).
+
 ## Getting updates
 
 When you're told there's a new version to pick up:
@@ -109,6 +146,8 @@ update by itself -- run `stop_server.bat`, then either double-click
 - To back up your work, copy the whole `data/` folder somewhere safe.
 - Deleting a document from the app is permanent (after a confirmation
   prompt) -- there's no undo, so back up first if you're not sure.
+- Documents are private to the account that uploaded them -- if more than
+  one person uses this, each person only ever sees their own uploads.
 
 ## What it does
 

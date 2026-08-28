@@ -36,6 +36,10 @@
       border-bottom: 1px solid var(--border);
       padding: 0.85rem 1.75rem;
       box-shadow: var(--shadow-sm);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
     }
     header a {
       display: inline-flex;
@@ -47,6 +51,23 @@
       text-decoration: none;
       letter-spacing: -0.01em;
     }
+    .header-account {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 0.85rem;
+    }
+    .link-button {
+      background: none;
+      border: none;
+      box-shadow: none;
+      padding: 0;
+      color: var(--muted);
+      font-size: 0.85rem;
+      text-decoration: underline;
+      cursor: pointer;
+    }
+    .link-button:hover { color: var(--accent); }
     .logo-mark {
       display: inline-flex;
       align-items: center;
@@ -396,6 +417,37 @@
       padding: 1rem 1.1rem;
       box-shadow: var(--shadow-sm);
     }
+
+    .login-wrap {
+      max-width: 360px;
+      margin: 2rem auto 0;
+    }
+    .login-form {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+      box-shadow: var(--shadow-sm);
+      margin-top: 1rem;
+    }
+    .login-form label {
+      display: block;
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: var(--muted-light);
+      margin-bottom: 0.3rem;
+    }
+    .login-form input {
+      width: 100%;
+    }
+    .login-form button {
+      width: 100%;
+    }
     form.filters label {
       display: block;
       font-size: 0.72rem;
@@ -490,7 +542,17 @@
   </style>
 </head>
 <body>
-  <header><a href="/"><span class="logo-mark"><img src="/static/comment-insight-icon.png" alt=""></span>Comment Insight</a></header>
+  <header>
+    <a href="/"><span class="logo-mark"><img src="/static/comment-insight-icon.png" alt=""></span>Comment Insight</a>
+    {% if request.session.get('email') %}
+      <div class="header-account">
+        <span class="muted">{{ request.session.get('email') }}</span>
+        <form method="post" action="/logout" style="display:contents">
+          <button type="submit" class="link-button">Log out</button>
+        </form>
+      </div>
+    {% endif %}
+  </header>
   <main>
     {% block content %}{% endblock %}
   </main>

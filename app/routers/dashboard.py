@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from app import analysis, charts, reports, storage, xlsx_reports
+from app import analysis, auth, charts, reports, storage, xlsx_reports
 from app.ai.anthropic_classifier import AnthropicClassifier
 from app.ai.anthropic_conflict_detector import AnthropicConflictDetector
 from app.ai.anthropic_insights import AnthropicInsightsGenerator
@@ -66,17 +66,17 @@ def get_insights_generator() -> InsightsGenerator:
     return AnthropicInsightsGenerator()
 
 
-def _insights_context(conn: sqlite3.Connection) -> dict:
+def _insights_context(conn: sqlite3.Connection, user_id: int) -> dict:
     """{"insights": ..., "insights_stale": ...} -- insights is None if none
     have been generated yet; insights_stale is True if the document/comment
     counts have changed since the stored insights were generated, which is
     the closest cheap proxy for "the documents changed, this may be out of
     date" without diffing actual content."""
-    row = storage.get_latest_insights(conn)
+    row = storage.get_latest_insights(conn, user_id)
     if row is None:
         return {"insights": None, "insights_stale": False}
 
-    current = analysis.gather(conn)
+    current = analysis.gather(conn, user_id)
     stale = (
         row["document_count"] != current["total_documents"]
         or row["comment_count"] != current["total_comments"]
@@ -92,12 +92,14 @@ def _insights_context(conn: sqlite3.Connection) -> dict:
     }
 
 
-def _analysis_context(conn: sqlite3.Connection, active_tab: str = "insights", error: str | None = None) -> dict:
-    data = analysis.gather(conn)
+def _analysis_context(
+    conn: sqlite3.Connection, user_id: int, active_tab: str = "insights", error: str | None = None
+) -> dict:
+    data = analysis.gather(conn, user_id)
     priority_comments = [c for c in data["all_comments"] if c["is_priority"]]
     return {
         **data,
-        **_insights_context(conn),
+        **_insights_context(conn, user_id),
         "priority_comments": priority_comments,
         "resolution_statuses": storage.RESOLUTION_STATUSES,
         "resolution_labels": storage.RESOLUTION_LABELS,
@@ -110,6 +112,7 @@ def _analysis_context(conn: sqlite3.Connection, active_tab: str = "insights", er
 def _document_context(
     conn: sqlite3.Connection,
     document_id: int,
+    user_id: int,
     q: str | None = None,
     author: str | None = None,
     category: str | None = None,
@@ -117,7 +120,7 @@ def _document_context(
     error: str | None = None,
     revision_summary: dict | None = None,
 ) -> dict:
-    document = storage.get_document(conn, document_id)
+    document = storage.get_document(conn, document_id, user_id)
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found.")
 
@@ -157,41 +160,48 @@ def _document_context(
 
 
 @router.get("/")
-def index(request: Request, conn: sqlite3.Connection = Depends(get_db)):
+def index(request: Request, conn: sqlite3.Connection = Depends(get_db), user: dict = Depends(auth.require_user)):
     return templates.TemplateResponse(
-        request, "index.html", {"documents": storage.list_documents(conn)}
+        request, "index.html", {"documents": storage.list_documents(conn, user["id"])}
     )
 
 
 @router.get("/analysis")
-def view_analysis(request: Request, conn: sqlite3.Connection = Depends(get_db)):
-    return templates.TemplateResponse(request, "analysis.html", _analysis_context(conn, active_tab="insights"))
+def view_analysis(
+    request: Request, conn: sqlite3.Connection = Depends(get_db), user: dict = Depends(auth.require_user)
+):
+    context = _analysis_context(conn, user["id"], active_tab="insights")
+    return templates.TemplateResponse(request, "analysis.html", context)
 
 
 @router.get("/analysis/charts")
-def view_analysis_charts(request: Request, conn: sqlite3.Connection = Depends(get_db)):
-    return templates.TemplateResponse(request, "analysis.html", _analysis_context(conn, active_tab="charts"))
+def view_analysis_charts(
+    request: Request, conn: sqlite3.Connection = Depends(get_db), user: dict = Depends(auth.require_user)
+):
+    context = _analysis_context(conn, user["id"], active_tab="charts")
+    return templates.TemplateResponse(request, "analysis.html", context)
 
 
 @router.post("/analysis/insights")
 def create_analysis_insights(
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
+    user: dict = Depends(auth.require_user),
     generator: InsightsGenerator = Depends(get_insights_generator),
 ):
     try:
-        generate_insights(conn, generator)
+        generate_insights(conn, user["id"], generator)
     except Exception as exc:
-        context = _analysis_context(conn, active_tab="insights", error=f"Insight generation failed: {exc}")
+        context = _analysis_context(conn, user["id"], active_tab="insights", error=f"Insight generation failed: {exc}")
         return templates.TemplateResponse(request, "analysis.html", context, status_code=502)
 
     return RedirectResponse("/analysis", status_code=303)
 
 
 @router.get("/analysis/export.docx")
-def export_analysis_docx(conn: sqlite3.Connection = Depends(get_db)):
-    data = analysis.gather(conn)
-    insights = _insights_context(conn)["insights"]
+def export_analysis_docx(conn: sqlite3.Connection = Depends(get_db), user: dict = Depends(auth.require_user)):
+    data = analysis.gather(conn, user["id"])
+    insights = _insights_context(conn, user["id"])["insights"]
     content = reports.build_multi_document_report(
         data["document_summaries"],
         data["chart_rows"],
@@ -210,8 +220,8 @@ def export_analysis_docx(conn: sqlite3.Connection = Depends(get_db)):
 
 
 @router.get("/analysis/export.xlsx")
-def export_analysis_xlsx(conn: sqlite3.Connection = Depends(get_db)):
-    data = analysis.gather(conn)
+def export_analysis_xlsx(conn: sqlite3.Connection = Depends(get_db), user: dict = Depends(auth.require_user)):
+    data = analysis.gather(conn, user["id"])
     content = xlsx_reports.build_workbook(
         data["document_summaries"],
         data["chart_rows"],
@@ -227,14 +237,16 @@ def export_analysis_xlsx(conn: sqlite3.Connection = Depends(get_db)):
 
 
 @router.post("/upload")
-async def upload(request: Request, conn: sqlite3.Connection = Depends(get_db)):
+async def upload(
+    request: Request, conn: sqlite3.Connection = Depends(get_db), user: dict = Depends(auth.require_user)
+):
     form = await request.form()
     files: list[UploadFile] = form.getlist("file")
     if not files:
         return templates.TemplateResponse(
             request,
             "index.html",
-            {"documents": storage.list_documents(conn), "error": "Please choose at least one file."},
+            {"documents": storage.list_documents(conn, user["id"]), "error": "Please choose at least one file."},
             status_code=400,
         )
 
@@ -243,7 +255,7 @@ async def upload(request: Request, conn: sqlite3.Connection = Depends(get_db)):
     for file in files:
         content = await file.read()
         try:
-            document_ids.append(storage.ingest_uploaded_file(conn, file.filename, content))
+            document_ids.append(storage.ingest_uploaded_file(conn, user["id"], file.filename, content))
         except ValueError as exc:
             errors.append(f"{file.filename}: {exc}")
 
@@ -252,7 +264,7 @@ async def upload(request: Request, conn: sqlite3.Connection = Depends(get_db)):
         return templates.TemplateResponse(
             request,
             "index.html",
-            {"documents": storage.list_documents(conn), "error": error_message},
+            {"documents": storage.list_documents(conn, user["id"]), "error": error_message},
             status_code=400,
         )
 
@@ -263,8 +275,10 @@ async def upload(request: Request, conn: sqlite3.Connection = Depends(get_db)):
 
 
 @router.post("/documents/{document_id}/delete")
-def delete_document(document_id: int, conn: sqlite3.Connection = Depends(get_db)):
-    if not storage.delete_document(conn, document_id):
+def delete_document(
+    document_id: int, conn: sqlite3.Connection = Depends(get_db), user: dict = Depends(auth.require_user)
+):
+    if not storage.delete_document(conn, document_id, user["id"]):
         raise HTTPException(status_code=404, detail="Document not found.")
     return RedirectResponse("/", status_code=303)
 
@@ -281,11 +295,14 @@ def view_document(
     revised_new: int | None = None,
     revised_removed: int | None = None,
     conn: sqlite3.Connection = Depends(get_db),
+    user: dict = Depends(auth.require_user),
 ):
     revision_summary = None
     if revised_carried is not None:
         revision_summary = {"carried_forward": revised_carried, "new_comments": revised_new, "removed_comments": revised_removed}
-    context = _document_context(conn, document_id, q=q, author=author, category=category, sort=sort, revision_summary=revision_summary)
+    context = _document_context(
+        conn, document_id, user["id"], q=q, author=author, category=category, sort=sort, revision_summary=revision_summary
+    )
     return templates.TemplateResponse(request, "document.html", context)
 
 
@@ -294,11 +311,12 @@ async def revise_document(
     document_id: int,
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
+    user: dict = Depends(auth.require_user),
 ):
     """Swaps in a revised .docx for an existing document, carrying forward
     classification/resolution decisions for comments that match one from
     before -- see storage.replace_document_with_revision()."""
-    if storage.get_document(conn, document_id) is None:
+    if storage.get_document(conn, document_id, user["id"]) is None:
         raise HTTPException(status_code=404, detail="Document not found.")
 
     form = await request.form()
@@ -307,18 +325,18 @@ async def revise_document(
         return templates.TemplateResponse(
             request,
             "document.html",
-            _document_context(conn, document_id, error="Please choose a .docx file to upload as the revision."),
+            _document_context(conn, document_id, user["id"], error="Please choose a .docx file to upload as the revision."),
             status_code=400,
         )
 
     content = await file.read()
     try:
-        summary = storage.replace_document_with_revision(conn, document_id, file.filename, content)
+        summary = storage.replace_document_with_revision(conn, document_id, user["id"], file.filename, content)
     except ValueError as exc:
         return templates.TemplateResponse(
             request,
             "document.html",
-            _document_context(conn, document_id, error=str(exc)),
+            _document_context(conn, document_id, user["id"], error=str(exc)),
             status_code=400,
         )
 
@@ -330,8 +348,10 @@ async def revise_document(
 
 
 @router.get("/documents/{document_id}/export")
-def export_report(document_id: int, conn: sqlite3.Connection = Depends(get_db)):
-    document = storage.get_document(conn, document_id)
+def export_report(
+    document_id: int, conn: sqlite3.Connection = Depends(get_db), user: dict = Depends(auth.require_user)
+):
+    document = storage.get_document(conn, document_id, user["id"])
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found.")
 
@@ -354,9 +374,10 @@ async def classify(
     document_id: int,
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
+    user: dict = Depends(auth.require_user),
     classifier: Classifier = Depends(get_classifier),
 ):
-    if storage.get_document(conn, document_id) is None:
+    if storage.get_document(conn, document_id, user["id"]) is None:
         raise HTTPException(status_code=404, detail="Document not found.")
 
     form = await request.form()
@@ -368,7 +389,7 @@ async def classify(
         return templates.TemplateResponse(
             request,
             "document.html",
-            _document_context(conn, document_id, error=f"Classification failed: {exc}"),
+            _document_context(conn, document_id, user["id"], error=f"Classification failed: {exc}"),
             status_code=502,
         )
 
@@ -380,9 +401,10 @@ async def detect_conflicts(
     document_id: int,
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
+    user: dict = Depends(auth.require_user),
     detector: ConflictDetector = Depends(get_conflict_detector),
 ):
-    if storage.get_document(conn, document_id) is None:
+    if storage.get_document(conn, document_id, user["id"]) is None:
         raise HTTPException(status_code=404, detail="Document not found.")
 
     form = await request.form()
@@ -394,11 +416,25 @@ async def detect_conflicts(
         return templates.TemplateResponse(
             request,
             "document.html",
-            _document_context(conn, document_id, error=f"Conflict check failed: {exc}"),
+            _document_context(conn, document_id, user["id"], error=f"Conflict check failed: {exc}"),
             status_code=502,
         )
 
     return RedirectResponse(next_url, status_code=303)
+
+
+def _require_own_comment(conn: sqlite3.Connection, document_id: int, comment_id: int, user_id: int) -> None:
+    """Raises 404 unless comment_id both belongs to document_id AND that
+    document belongs to user_id. Without this, a request naming one of
+    *your own* documents in the URL could still act on a comment_id that
+    actually belongs to someone else's document -- the document-level
+    ownership check alone doesn't catch that, since comment_id is a
+    separate path parameter the caller can set independently."""
+    if storage.get_document(conn, document_id, user_id) is None:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    comment = storage.get_comment(conn, comment_id)
+    if comment is None or comment["document_id"] != document_id:
+        raise HTTPException(status_code=404, detail="Comment not found.")
 
 
 @router.post("/documents/{document_id}/comments/{comment_id}/resolution")
@@ -407,9 +443,9 @@ async def set_resolution(
     comment_id: int,
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
+    user: dict = Depends(auth.require_user),
 ):
-    if storage.get_document(conn, document_id) is None:
-        raise HTTPException(status_code=404, detail="Document not found.")
+    _require_own_comment(conn, document_id, comment_id, user["id"])
 
     form = await request.form()
     status = (form.get("status") or "").strip() or None
@@ -429,14 +465,14 @@ async def set_category(
     comment_id: int,
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
+    user: dict = Depends(auth.require_user),
 ):
     """Lets the writer set or correct a comment's category by hand -- e.g.
     fixing something the AI got wrong, or classifying a comment without
     running AI classification at all. Recorded the same way an AI
     classification is (the classifications table), just with model="manual"
     so it's clear in exports that a person, not the AI, made the call."""
-    if storage.get_document(conn, document_id) is None:
-        raise HTTPException(status_code=404, detail="Document not found.")
+    _require_own_comment(conn, document_id, comment_id, user["id"])
 
     form = await request.form()
     category = (form.get("category") or "").strip() or None

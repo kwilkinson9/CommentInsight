@@ -4,19 +4,15 @@
 Uses fake AI implementations -- no real, paid API calls."""
 
 import pathlib
-import shutil
 import sys
-import tempfile
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from fastapi.testclient import TestClient
-
 from app.ai.base import Classification, Classifier, ConflictDetector, ConflictPair
-from app.database import get_connection, get_db
 from app.main import app
 from app.routers.dashboard import get_classifier, get_conflict_detector
+from tests.auth_helpers import AuthenticatedTestCase
 
 SAMPLE = pathlib.Path(__file__).parent / "sample_docs" / "comment_insight_synthetic_sample.docx"
 
@@ -52,27 +48,12 @@ class BrokenConflictDetector(ConflictDetector):
         raise RuntimeError("simulated API failure")
 
 
-class ResolutionAndConflictTests(unittest.TestCase):
+class ResolutionAndConflictTests(AuthenticatedTestCase):
     def setUp(self):
-        self.tmpdir = pathlib.Path(tempfile.mkdtemp())
-        self.db_path = self.tmpdir / "test.db"
-
-        def override_get_db():
-            conn = get_connection(self.db_path)
-            try:
-                yield conn
-            finally:
-                conn.close()
-
+        super().setUp()
         self.fake_detector = FakeConflictDetector()
-        app.dependency_overrides[get_db] = override_get_db
         app.dependency_overrides[get_classifier] = lambda: FakeClassifier()
         app.dependency_overrides[get_conflict_detector] = lambda: self.fake_detector
-        self.client = TestClient(app, follow_redirects=False)
-
-    def tearDown(self):
-        app.dependency_overrides.clear()
-        shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def _upload_sample(self):
         with open(SAMPLE, "rb") as f:

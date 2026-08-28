@@ -1,38 +1,15 @@
 import pathlib
-import shutil
 import sys
-import tempfile
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from fastapi.testclient import TestClient
-
-from app.database import get_connection, get_db
-from app.main import app
+from tests.auth_helpers import AuthenticatedTestCase
 
 SAMPLE = pathlib.Path(__file__).parent / "sample_docs" / "comment_insight_synthetic_sample.docx"
 
 
-class DocumentsApiTests(unittest.TestCase):
-    def setUp(self):
-        self.tmpdir = pathlib.Path(tempfile.mkdtemp())
-        self.db_path = self.tmpdir / "test.db"
-
-        def override_get_db():
-            conn = get_connection(self.db_path)
-            try:
-                yield conn
-            finally:
-                conn.close()
-
-        app.dependency_overrides[get_db] = override_get_db
-        self.client = TestClient(app)
-
-    def tearDown(self):
-        app.dependency_overrides.clear()
-        shutil.rmtree(self.tmpdir, ignore_errors=True)
-
+class DocumentsApiTests(AuthenticatedTestCase):
     def _upload_sample(self):
         with open(SAMPLE, "rb") as f:
             return self.client.post(

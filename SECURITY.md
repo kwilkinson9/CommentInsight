@@ -1,9 +1,8 @@
 # Security & Data Handling
 
 This document tracks what Comment Insight currently does with data, and what
-still needs to happen before this is offered to other medical writers as a
-product. It's a running checklist, not a finished policy — update it as
-decisions get made.
+still needs to happen before real sponsor data flows through it. It's a
+running checklist, not a finished policy — update it as decisions get made.
 
 ## Why this matters
 
@@ -12,63 +11,103 @@ reports, regulatory submissions, and similar) for medical writers. That's a
 different bar than a personal side project: the documents themselves, and the
 comments on them, can be commercially or medically sensitive.
 
-## Current state (personal/single-user use)
+## Now built: accounts and per-user isolation
 
-- **AI calls (Anthropic API).** Classification and conflict detection send
-  comment text plus limited surrounding context (the anchored phrase and the
-  paragraph it appears in — not the whole document) to Anthropic's API.
-  Under Anthropic's standard commercial API terms:
+As of the multi-tester pilot, the app requires a login and every document
+belongs to exactly one account:
+
+- **Authentication.** Email + password, bcrypt-hashed, session cookies
+  signed with `SESSION_SECRET_KEY`. Accounts are admin-created
+  (`scripts/create_user.py`) — no open self-signup, so the tester list stays
+  a known, small group.
+- **Per-user data isolation.** Every document (and everything derived from
+  it — comments, classifications, resolutions, conflicts, cross-document
+  insights) is scoped to the account that uploaded it. Every route that
+  takes a document_id or comment_id verifies ownership before touching the
+  database; a mismatched owner returns 404, indistinguishable from the
+  document not existing at all, so a guessed ID can't be used to probe what
+  exists under another account. This includes the case where a request
+  names *your own* document but a comment_id belonging to someone else's —
+  tested explicitly, see `tests/test_auth.py`.
+- **Filesystem isolation.** Uploaded files are also split into per-user
+  subdirectories on disk, on top of the database-level filtering.
+- **Login hardening.** Repeated failed logins against one email are rate
+  limited (in-memory — resets on restart, doesn't coordinate across
+  multiple worker processes; fine for a single-process pilot, a real
+  scaling need would want a shared store like Redis instead). The session
+  cookie is `SameSite=Lax`; `SESSION_COOKIE_SECURE=true` marks it
+  HTTPS-only once actually deployed behind TLS. Basic security headers
+  (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, HSTS when
+  the secure-cookie flag is on) are set on every response.
+- **Migration safety.** A database from before accounts existed doesn't
+  lose its documents — they're folded into one freshly-created account on
+  first startup, with generated credentials printed once. See
+  `app/database.py`'s `_migrate_to_multi_user`.
+
+None of this is provisioned or hosted anywhere yet — it's the application
+code, ready to run wherever it's deployed. See "Still outstanding" below for
+what deploying it for real still needs.
+
+## Current state: AI calls and secrets
+
+- **AI calls (Anthropic API).** Classification, conflict detection, and
+  cross-document insights send comment text plus limited surrounding
+  context (the anchored phrase, the paragraph it appears in, and — for
+  insights — which document/section it came from) to Anthropic's API. Under
+  Anthropic's standard commercial API terms:
   - This data is **never used to train Anthropic's models**.
   - It's retained for a short window (currently around 7 days) for abuse
     monitoring, then automatically deleted.
-  - This is *not* Zero Data Retention — see "Before commercializing" below.
-- **Local storage.** Uploaded `.docx` files and the SQLite database
-  (`app/data/`) are stored unencrypted on whatever machine runs the server.
-  For local personal use this is fine — it's your machine. It is not
-  currently suitable for storing other people's confidential documents.
-- **Secrets.** The Anthropic API key lives only in a local `.env` file
-  (gitignored, never committed). It is never typed into chat or committed to
-  source control. If a key is ever exposed, revoke and rotate it immediately
-  at console.anthropic.com.
-- **Architecture.** Single-user, single-tenant. One API key, one local
-  database. There is no concept of separate customer accounts or data
-  isolation between users yet.
+  - This is *not* Zero Data Retention — see "Still outstanding" below.
+- **Secrets.** The Anthropic API key and the session-signing key both live
+  only in a local `.env` file (gitignored, never committed). Neither is
+  ever typed into chat or committed to source control. If either is ever
+  exposed, rotate it immediately (API key at console.anthropic.com;
+  session key by generating a new one and restarting the app, which logs
+  everyone out).
 
-## Before commercializing (offering this to other medical writers)
+## Still outstanding — before real sponsor data is involved
 
-These are business and architecture steps, not code changes I can make
-unilaterally — flagging them here so they don't get lost.
+These are mostly business/infrastructure steps, not application code:
 
 1. **Zero Data Retention (ZDR) agreement with Anthropic.**
    Standard API terms (no training, ~7-day retention) may not be strong
-   enough to market to medical writers handling confidential documents. ZDR
-   means Anthropic does not store prompts/responses at rest at all after the
-   response is returned. This requires contacting Anthropic's sales team and
-   is enabled per organization, on the Anthropic account making the API
-   calls. Not configurable from application code — do this when ready to
-   commercialize: https://claude.com/contact-sales
+   enough for confidential sponsor documents. ZDR means Anthropic does not
+   store prompts/responses at rest at all after the response is returned.
+   Requires contacting Anthropic's sales team, enabled per organization on
+   the account making the API calls — not configurable from application
+   code: https://claude.com/contact-sales
+   **This is the one to start soonest — it has the longest lead time and
+   the current pilot round is deliberately using only synthetic/de-identified
+   test documents while it's in progress.**
 
-2. **Multi-tenant data isolation.**
-   If multiple customers use a hosted version of this app, their documents
-   need to be kept separate — both in storage and in whatever gets sent to
-   Anthropic. Right now there's no per-customer boundary at all.
+2. **Actual hosting, with TLS.** The app is ready to run behind HTTPS
+   (`SESSION_COOKIE_SECURE=true` enforces it for the session cookie), but
+   provisioning the server, domain, and certificate is a separate,
+   infrastructure-level task outside this repo.
 
-3. **Encryption at rest for local/hosted storage.**
-   Uploaded documents and the database need real protection wherever they're
-   stored — this is separate from and not covered by Anthropic's ZDR, which
-   only covers the API call itself, not what happens to files before or
-   after.
+3. **Encryption at rest.** Uploaded documents and the SQLite database still
+   have no encryption of their own. In practice this is usually a hosting
+   platform setting (e.g. an encrypted disk/volume) rather than something
+   the application needs to implement itself — worth confirming explicitly
+   with whatever host is chosen, rather than assuming it's on by default.
 
-4. **Data Processing Agreements (DPAs) with customers.**
-   Once other people's confidential documents flow through this app, you
-   become a data processor for them. That's a legal/contractual
+4. **Data Processing Agreements (DPAs) with sponsors/customers.**
+   Once real confidential documents flow through this app, whoever operates
+   it becomes a data processor for the sponsor. That's a legal/contractual
    relationship, not a technical one, but it depends on the technical
    answers above (where data is stored, who can access it, how long it's
    kept).
 
-5. **Access controls / authentication.**
-   The app currently has no login system — anyone with network access to the
-   server can use it. Needed before any hosted, multi-user deployment.
+5. **Password reset.** There's currently no self-service way to reset a
+   forgotten password — re-running `scripts/create_user.py` for the same
+   email just reports it already exists. Fine for a small, admin-managed
+   pilot; would need a real flow (email-based reset token) before wider use.
+
+6. **Rate limiting beyond login.** Only failed logins are currently rate
+   limited. If this is ever opened beyond a small known group, the upload
+   and AI-triggering endpoints would want limits too, both for cost control
+   (AI calls aren't free) and abuse resistance.
 
 ## Reporting a concern
 

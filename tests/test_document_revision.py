@@ -5,18 +5,14 @@ decisions for comments that match one from before by (reviewer, text)."""
 
 import io
 import pathlib
-import shutil
 import sys
-import tempfile
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from docx import Document as DocxDocument
-from fastapi.testclient import TestClient
 
-from app.database import get_connection, get_db
-from app.main import app
+from tests.auth_helpers import AuthenticatedTestCase
 
 
 def _build_docx(comments: list[tuple[str, str]]) -> bytes:
@@ -47,25 +43,7 @@ REVISED = _build_docx([
 ])
 
 
-class DocumentRevisionTests(unittest.TestCase):
-    def setUp(self):
-        self.tmpdir = pathlib.Path(tempfile.mkdtemp())
-        self.db_path = self.tmpdir / "test.db"
-
-        def override_get_db():
-            conn = get_connection(self.db_path)
-            try:
-                yield conn
-            finally:
-                conn.close()
-
-        app.dependency_overrides[get_db] = override_get_db
-        self.client = TestClient(app, follow_redirects=False)
-
-    def tearDown(self):
-        app.dependency_overrides.clear()
-        shutil.rmtree(self.tmpdir, ignore_errors=True)
-
+class DocumentRevisionTests(AuthenticatedTestCase):
     def _upload_original(self):
         return self.client.post(
             "/upload",

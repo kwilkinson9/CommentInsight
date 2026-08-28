@@ -9,8 +9,16 @@ DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 DB_PATH = DATA_DIR / "comment_insight.db"
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS documents (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id),
     filename TEXT NOT NULL,
     uploaded_at TEXT NOT NULL
 );
@@ -61,6 +69,7 @@ CREATE TABLE IF NOT EXISTS conflicts (
 
 CREATE TABLE IF NOT EXISTS analysis_insights (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id),
     overview TEXT NOT NULL,
     themes_json TEXT NOT NULL,
     document_count INTEGER NOT NULL,
@@ -79,6 +88,50 @@ def _migrate(conn: sqlite3.Connection) -> None:
     columns = {row["name"] for row in conn.execute("PRAGMA table_info(resolutions)").fetchall()}
     if "note" not in columns:
         conn.execute("ALTER TABLE resolutions ADD COLUMN note TEXT")
+        conn.commit()
+
+    _migrate_to_multi_user(conn)
+
+
+def _migrate_to_multi_user(conn: sqlite3.Connection) -> None:
+    """A database created before accounts existed has documents/insights
+    with no owner. Rather than silently losing them, this folds every
+    ownerless document into one freshly-created account and prints its
+    (randomly generated) credentials once -- the only way to reach that
+    data again, so this only ever needs to run the first time a pre-auth
+    database is opened after upgrading."""
+    doc_columns = {row["name"] for row in conn.execute("PRAGMA table_info(documents)").fetchall()}
+    if "user_id" in doc_columns:
+        return
+
+    conn.execute("ALTER TABLE documents ADD COLUMN user_id INTEGER REFERENCES users(id)")
+    orphaned = conn.execute("SELECT COUNT(*) AS n FROM documents WHERE user_id IS NULL").fetchone()["n"]
+
+    if orphaned:
+        import secrets
+
+        from app import auth
+
+        email = "local@commentinsight.local"
+        password = secrets.token_urlsafe(12)
+        user_id = auth.create_user(conn, email, password)
+        conn.execute("UPDATE documents SET user_id = ? WHERE user_id IS NULL", (user_id,))
+        print(
+            f"\n[Comment Insight] This database predates user accounts. Your "
+            f"{orphaned} existing document(s) have been moved into a new account:\n"
+            f"  email:    {email}\n"
+            f"  password: {password}\n"
+            f"Log in with these -- you can change the password afterwards. This "
+            f"message only appears once.\n"
+        )
+
+    # analysis_insights is a disposable cache (regenerated on demand), so
+    # rather than guessing which account it belonged to, just clear it.
+    insights_columns = {row["name"] for row in conn.execute("PRAGMA table_info(analysis_insights)").fetchall()}
+    if "user_id" not in insights_columns:
+        conn.execute("DELETE FROM analysis_insights")
+        conn.execute("ALTER TABLE analysis_insights ADD COLUMN user_id INTEGER REFERENCES users(id)")
+
     conn.commit()
 
 
