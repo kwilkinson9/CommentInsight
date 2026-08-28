@@ -97,9 +97,11 @@
             AI insights generated {{ insights.created_at|friendly_date }}
             {% if insights_stale %}&mdash; documents have changed since, may be out of date{% endif %}
           </span>
+          <label class="scrub-check"><input type="checkbox" name="scrub">Scrub likely patient identifiers first</label>
           <button type="submit">Regenerate insights</button>
         {% else %}
           <span class="muted">No AI insights generated yet</span>
+          <label class="scrub-check"><input type="checkbox" name="scrub">Scrub likely patient identifiers first</label>
           <button type="submit">Find patterns across documents</button>
         {% endif %}
       </form>

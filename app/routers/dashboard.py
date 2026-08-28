@@ -16,7 +16,13 @@ from app.ai.anthropic_classifier import AnthropicClassifier
 from app.ai.anthropic_conflict_detector import AnthropicConflictDetector
 from app.ai.anthropic_insights import AnthropicInsightsGenerator
 from app.ai.base import CATEGORIES, Classifier, ConflictDetector, InsightsGenerator
-from app.ai.service import classify_document, detect_conflicts_for_document, generate_insights
+from app.ai.service import (
+    classify_document,
+    detect_conflicts_for_document,
+    generate_insights,
+    scan_all_documents_for_identifiers,
+    scan_document_for_identifiers,
+)
 from app.database import get_db
 
 router = APIRouter(tags=["dashboard"])
@@ -159,6 +165,25 @@ def _document_context(
     }
 
 
+def _redaction_review(request: Request, findings: list, action: str, cancel_url: str, next_url: str | None = None):
+    """The confirmation screen shown before an AI call when "scrub"
+    was requested and app.deidentify found something -- see
+    app/deidentify.py and app/templates/review_redaction.html. Resubmitting
+    the form on that page posts back to `action` with scrub=on and
+    confirmed=1, which skips this check and proceeds with the (redacted)
+    AI call for real."""
+    return templates.TemplateResponse(
+        request,
+        "review_redaction.html",
+        {
+            "redaction_findings": findings,
+            "redaction_action": action,
+            "redaction_next": next_url,
+            "redaction_cancel_url": cancel_url,
+        },
+    )
+
+
 @router.get("/")
 def index(request: Request, conn: sqlite3.Connection = Depends(get_db), user: dict = Depends(auth.require_user)):
     return templates.TemplateResponse(
@@ -183,14 +208,23 @@ def view_analysis_charts(
 
 
 @router.post("/analysis/insights")
-def create_analysis_insights(
+async def create_analysis_insights(
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
     user: dict = Depends(auth.require_user),
     generator: InsightsGenerator = Depends(get_insights_generator),
 ):
+    form = await request.form()
+    scrub = form.get("scrub") == "on"
+    confirmed = form.get("confirmed") == "1"
+
+    if scrub and not confirmed:
+        findings = scan_all_documents_for_identifiers(conn, user["id"])
+        if findings:
+            return _redaction_review(request, findings, action="/analysis/insights", cancel_url="/analysis")
+
     try:
-        generate_insights(conn, user["id"], generator)
+        generate_insights(conn, user["id"], generator, redact=scrub)
     except Exception as exc:
         context = _analysis_context(conn, user["id"], active_tab="insights", error=f"Insight generation failed: {exc}")
         return templates.TemplateResponse(request, "analysis.html", context, status_code=502)
@@ -382,9 +416,17 @@ async def classify(
 
     form = await request.form()
     next_url = form.get("next") or f"/documents/{document_id}"
+    scrub = form.get("scrub") == "on"
+    confirmed = form.get("confirmed") == "1"
+
+    if scrub and not confirmed:
+        findings = scan_document_for_identifiers(conn, document_id)
+        if findings:
+            action = f"/documents/{document_id}/classify"
+            return _redaction_review(request, findings, action=action, cancel_url=next_url, next_url=next_url)
 
     try:
-        classify_document(conn, document_id, classifier)
+        classify_document(conn, document_id, classifier, redact=scrub)
     except Exception as exc:
         return templates.TemplateResponse(
             request,
@@ -409,9 +451,17 @@ async def detect_conflicts(
 
     form = await request.form()
     next_url = form.get("next") or f"/documents/{document_id}"
+    scrub = form.get("scrub") == "on"
+    confirmed = form.get("confirmed") == "1"
+
+    if scrub and not confirmed:
+        findings = scan_document_for_identifiers(conn, document_id)
+        if findings:
+            action = f"/documents/{document_id}/detect-conflicts"
+            return _redaction_review(request, findings, action=action, cancel_url=next_url, next_url=next_url)
 
     try:
-        detect_conflicts_for_document(conn, document_id, detector)
+        detect_conflicts_for_document(conn, document_id, detector, redact=scrub)
     except Exception as exc:
         return templates.TemplateResponse(
             request,

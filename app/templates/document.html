@@ -40,6 +40,7 @@
       <input type="hidden" name="next" value="/documents/{{ document.id }}{{ '?' + current_query if current_query else '' }}">
       {% if unclassified_count > 0 %}
         <span class="muted">{{ total_count - unclassified_count }} of {{ total_count }} comments classified</span>
+        <label class="scrub-check"><input type="checkbox" name="scrub">Scrub likely patient identifiers first</label>
         <button type="submit">Classify {{ unclassified_count }} remaining comment{{ "" if unclassified_count == 1 else "s" }}</button>
       {% else %}
         <span class="muted">All {{ total_count }} comments classified</span>
@@ -54,6 +55,7 @@
         {% else %}
           <span class="muted">No reviewer disagreements flagged yet</span>
         {% endif %}
+        <label class="scrub-check"><input type="checkbox" name="scrub">Scrub likely patient identifiers first</label>
         <button type="submit">Check for disagreements</button>
       </form>
     {% endif %}

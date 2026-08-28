@@ -19,6 +19,7 @@ python -m venv .venv
 ```
 .venv\Scripts\activate
 pip install -r requirements.txt
+python -m spacy download en_core_web_sm
 copy .env.example .env
 ```
 
@@ -26,8 +27,14 @@ copy .env.example .env
 ```
 source .venv/bin/activate
 pip install -r requirements.txt
+python -m spacy download en_core_web_sm
 cp .env.example .env
 ```
+
+The `spacy download` step fetches the small local language model used by the
+"scrub likely patient identifiers" feature (see below) -- it runs entirely on
+your own machine, no account or network access needed after this one-time
+download.
 
 Then open `.env` in a text editor:
 - Paste your Anthropic API key in place of `sk-ant-...`.
@@ -162,6 +169,14 @@ update by itself -- run `stop_server.bat`, then either double-click
   and an AI-generated overview of patterns and recurring themes.
 - **Export** a branded Word report (single document or cross-document) and,
   for cross-document analysis, an Excel workbook.
+- **Scrub likely patient identifiers before any AI call** -- an opt-in
+  checkbox next to Classify / Check for disagreements / Find patterns.
+  When checked, it scans the text about to be sent to Claude for things
+  like names, emails, phone numbers, and specific dates, using a small
+  language model that runs entirely on your own machine (no data leaves
+  for this step). If it finds anything, you see exactly what and confirm
+  before the redacted version actually gets sent. This is a best-effort
+  mitigation, not a guarantee -- see `SECURITY.md`.
 
 ## Running tests
 

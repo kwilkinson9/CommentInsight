@@ -48,6 +48,36 @@ None of this is provisioned or hosted anywhere yet — it's the application
 code, ready to run wherever it's deployed. See "Still outstanding" below for
 what deploying it for real still needs.
 
+## Now built: optional local scrubbing before AI calls
+
+Classification, conflict detection, and cross-document insights each have
+an opt-in "Scrub likely patient identifiers first" checkbox. When checked:
+
+- `app/deidentify.py` scans the specific text about to be sent to Claude
+  (comment text, and the anchored document text/paragraph context where
+  applicable — never the reviewer's own name, which is professional
+  metadata the app needs, not patient data) for emails, phone numbers,
+  SSNs, specific dates, explicitly-labeled identifiers ("MRN:", "DOB:"),
+  and names/places via a small local NLP model (spaCy's `en_core_web_sm`).
+  This runs **entirely on the machine running the app — no network call,
+  no external service** — since the point is to avoid sending raw
+  identifying text anywhere external in the first place.
+- If anything is found, the writer sees exactly what, on a review screen,
+  and has to explicitly confirm before the redacted version is actually
+  sent. Nothing sends silently.
+- If nothing is found, it proceeds normally — no extra friction for
+  documents that don't need it.
+
+**This is a mitigation, not a guarantee.** Pattern-matching and a small
+local model will both miss things a person would catch (an unusual name,
+an indirectly identifying combination of details) and can occasionally
+over-flag things that aren't actually identifying. It's meant to sit
+alongside a human confirmation step and good judgment about what gets
+uploaded in the first place — not to be the reason real, unredacted
+patient data is considered safe to test with. See
+`tests/test_deidentify.py` and `tests/test_redaction.py` for what's
+actually verified to work.
+
 ## Current state: AI calls and secrets
 
 - **AI calls (Anthropic API).** Classification, conflict detection, and

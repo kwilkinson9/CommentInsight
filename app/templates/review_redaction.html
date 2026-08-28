@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Review before sending to Claude - Comment Insight{% endblock %}
+{% block content %}
+  <h1>Review before sending to Claude</h1>
+  <p class="muted">
+    {{ redaction_findings|length }} possible identifying detail{{ "" if redaction_findings|length == 1 else "s" }}
+    found in the text that would be sent. Each one below is replaced with a placeholder
+    (like <code>[EMAIL]</code>) in what actually gets sent -- nothing here leaves this
+    screen as shown.
+  </p>
+
+  <div class="error">
+    This is an automated, best-effort check, not a guarantee -- it can miss things a
+    person would catch. If anything looks incomplete, cancel and remove the sensitive
+    content from the document itself before trying again.
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Detected text</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for finding in redaction_findings %}
+        <tr>
+          <td>{{ finding.kind }}</td>
+          <td>{{ finding.text }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="button-group" style="margin-top: 1.1rem;">
+    <form method="post" action="{{ redaction_action }}">
+      <input type="hidden" name="scrub" value="on">
+      <input type="hidden" name="confirmed" value="1">
+      {% if redaction_next %}<input type="hidden" name="next" value="{{ redaction_next }}">{% endif %}
+      <button type="submit">Send redacted version to Claude</button>
+    </form>
+    <a class="button-link" href="{{ redaction_cancel_url }}">Cancel</a>
+  </div>
+{% endblock %}
