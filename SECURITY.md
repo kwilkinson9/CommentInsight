@@ -78,6 +78,25 @@ patient data is considered safe to test with. See
 `tests/test_deidentify.py` and `tests/test_redaction.py` for what's
 actually verified to work.
 
+## Now built: admin-generated password reset links
+
+There's still no open self-signup or self-initiated "forgot password" flow
+(the app never sends email), but a forgotten password no longer requires
+recreating the account:
+
+- Whoever manages the server runs `scripts/reset_password.py` with the
+  tester's email. It generates a random, single-use token, stores only its
+  SHA-256 hash in the database (`password_reset_tokens` table), and prints
+  a link containing the raw token — the only place the raw token is ever
+  available.
+- That link is sent to the tester through whatever channel already carries
+  their credentials (not automatically emailed by the app). Opening it lets
+  them set a new password themselves — self-service from that point on.
+- The link expires after one hour and stops working the moment it's used
+  once, whichever comes first. An expired, already-used, or made-up token
+  shows the same "invalid or expired" message rather than confirming which
+  case it was.
+
 ## Current state: AI calls and secrets
 
 - **AI calls (Anthropic API).** Classification, conflict detection, and
@@ -129,12 +148,7 @@ These are mostly business/infrastructure steps, not application code:
    answers above (where data is stored, who can access it, how long it's
    kept).
 
-5. **Password reset.** There's currently no self-service way to reset a
-   forgotten password — re-running `scripts/create_user.py` for the same
-   email just reports it already exists. Fine for a small, admin-managed
-   pilot; would need a real flow (email-based reset token) before wider use.
-
-6. **Rate limiting beyond login.** Only failed logins are currently rate
+5. **Rate limiting beyond login.** Only failed logins are currently rate
    limited. If this is ever opened beyond a small known group, the upload
    and AI-triggering endpoints would want limits too, both for cost control
    (AI calls aren't free) and abuse resistance.

@@ -56,9 +56,19 @@ python3 scripts/create_user.py
 ```
 
 It'll prompt for an email and password. Run it once per person who needs
-access. There's no in-app way to reset a forgotten password yet -- run this
-script again with the same email to see the "already exists" message, or ask
-whoever manages the server to help.
+access. Running it again with the same email just reports it already
+exists -- for a forgotten password, see below.
+
+**Forgotten password.** There's no self-service "forgot password" link in
+the app -- instead, whoever manages the server runs:
+
+```
+python3 scripts/reset_password.py
+```
+
+It prompts for the person's email and prints a one-time link (works once,
+expires after an hour). Send that link to them the same way you'd send
+their original login -- opening it lets them set a new password themselves.
 
 ## Running the server
 

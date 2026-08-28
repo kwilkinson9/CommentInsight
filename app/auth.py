@@ -13,11 +13,13 @@ public internet.
 
 from __future__ import annotations
 
+import hashlib
 import os
+import secrets
 import sqlite3
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import bcrypt
 from fastapi import Depends, HTTPException, Request
@@ -26,6 +28,11 @@ from app.database import get_db
 
 _LOGIN_ATTEMPT_LIMIT = 5
 _LOGIN_ATTEMPT_WINDOW_SECONDS = 15 * 60
+
+# How long an admin-generated reset link stays usable. Short enough that a
+# link sitting in an old chat/email isn't a standing risk, long enough that
+# a tester who's sent one has a reasonable window to act on it.
+_RESET_TOKEN_TTL_SECONDS = 60 * 60
 
 # bcrypt's cost factor is deliberately expensive (that's the point -- it
 # slows down offline brute-forcing of a stolen hash). 12 is a solid default
@@ -126,6 +133,70 @@ def authenticate(conn: sqlite3.Connection, email: str, password: str) -> dict | 
 
     _rate_limiter.record_success(email)
     return user
+
+
+def _hash_token(raw_token: str) -> str:
+    # These tokens are 256 bits of randomness, not user-chosen secrets like
+    # passwords -- there's nothing for an offline attacker to guess, so a
+    # plain fast hash (unlike bcrypt) is enough to keep a stolen database
+    # from directly handing over a usable link.
+    return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
+
+def create_reset_token(conn: sqlite3.Connection, email: str) -> str | None:
+    """Admin-facing: generates a one-time password reset token for the
+    given email. Returns the raw token (only ever available here -- only
+    its hash is stored) or None if no account matches that email."""
+    user = get_user_by_email(conn, email)
+    if user is None:
+        return None
+
+    raw_token = secrets.token_urlsafe(32)
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(seconds=_RESET_TOKEN_TTL_SECONDS)
+    conn.execute(
+        "INSERT INTO password_reset_tokens (user_id, token_hash, created_at, expires_at) VALUES (?, ?, ?, ?)",
+        (user["id"], _hash_token(raw_token), now.isoformat(), expires_at.isoformat()),
+    )
+    conn.commit()
+    return raw_token
+
+
+def get_valid_reset_token(conn: sqlite3.Connection, raw_token: str) -> dict | None:
+    """Returns the token row if raw_token is real, unused, and unexpired --
+    None otherwise. Used both to decide whether to show the reset form and,
+    again, to guard against the token expiring or being used a second time
+    between showing that form and submitting it."""
+    row = conn.execute(
+        "SELECT * FROM password_reset_tokens WHERE token_hash = ?", (_hash_token(raw_token),)
+    ).fetchone()
+    if row is None:
+        return None
+    row = dict(row)
+    if row["used_at"] is not None:
+        return None
+    if datetime.fromisoformat(row["expires_at"]) < datetime.now(timezone.utc):
+        return None
+    return row
+
+
+def reset_password(conn: sqlite3.Connection, raw_token: str, new_password: str) -> bool:
+    """Consumes a reset token and sets the new password. Returns False (and
+    changes nothing) if the token is missing, expired, or already used."""
+    token_row = get_valid_reset_token(conn, raw_token)
+    if token_row is None:
+        return False
+
+    conn.execute(
+        "UPDATE users SET password_hash = ? WHERE id = ?",
+        (hash_password(new_password), token_row["user_id"]),
+    )
+    conn.execute(
+        "UPDATE password_reset_tokens SET used_at = ? WHERE id = ?",
+        (datetime.now(timezone.utc).isoformat(), token_row["id"]),
+    )
+    conn.commit()
+    return True
 
 
 def require_user(request: Request, conn: sqlite3.Connection = Depends(get_db)) -> dict:
