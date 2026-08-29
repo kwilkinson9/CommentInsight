@@ -19,7 +19,6 @@ python -m venv .venv
 ```
 .venv\Scripts\activate
 pip install -r requirements.txt
-python -m spacy download en_core_web_sm
 copy .env.example .env
 ```
 
@@ -27,14 +26,12 @@ copy .env.example .env
 ```
 source .venv/bin/activate
 pip install -r requirements.txt
-python -m spacy download en_core_web_sm
 cp .env.example .env
 ```
 
-The `spacy download` step fetches the small local language model used by the
-"scrub likely patient identifiers" feature (see below) -- it runs entirely on
-your own machine, no account or network access needed after this one-time
-download.
+`pip install` also downloads the small local language model used by the
+"scrub likely patient identifiers" feature (see below) -- once installed, it
+runs entirely on your own machine with no further network access needed.
 
 Then open `.env` in a text editor:
 - Paste your Anthropic API key in place of `sk-ant-...`.
@@ -146,14 +143,67 @@ If more than one person reaches this over a network (not just
 - `SESSION_COOKIE_SECURE=true` -- marks login cookies HTTPS-only. This
   **requires** the server actually be behind HTTPS first (a reverse proxy
   with a real TLS certificate), or login will silently fail to persist.
-- Create an account per person with `scripts/create_user.py` (above) --
+- Invite testers with `scripts/invite_user.py` (see **Accounts** above) --
   don't share one login between testers, since documents are private to
   the account that uploaded them.
 
-Provisioning the actual host, domain, and TLS certificate is outside what's
-in this repo -- see `SECURITY.md` for the rest of what a real shared
-deployment needs (encryption at rest, a Zero Data Retention agreement with
-Anthropic if real sponsor data is involved, etc.).
+See `SECURITY.md` for the rest of what a real shared deployment needs
+(encryption at rest, a Zero Data Retention agreement with Anthropic if real
+sponsor data is involved, etc.).
+
+## Deploying to Railway
+
+This is how to actually put the app on the internet, at your own domain,
+with real always-on hosting. Uses [Railway](https://railway.com) --
+roughly $5-10/month for a pilot this size.
+
+1. **Create the project.** Sign up at railway.com (GitHub login is
+   easiest), then **New Project → Deploy from GitHub repo** and pick this
+   repo. Choose the branch that has the code you want live -- Railway
+   redeploys automatically every time that branch gets a new commit.
+   Railway reads `railway.json` in this repo and knows how to build and
+   start the app without any further setup here.
+
+2. **Add a Volume**, so your database and uploaded documents survive
+   restarts and redeploys instead of being wiped: on the service, go to
+   **Settings → Volumes → New Volume**, and set its mount path to
+   `/app/data`.
+
+3. **Add environment variables** (service → **Variables**) -- these are
+   the same ones your local `.env` has:
+   - `ANTHROPIC_API_KEY`
+   - `SESSION_SECRET_KEY` (generate one the same way as local setup)
+   - `SESSION_COOKIE_SECURE=true`
+   - `APP_BASE_URL` -- the real address, e.g.
+     `https://commentinsight.dossentra.app`
+   - `RESEND_API_KEY` and `INVITE_FROM_EMAIL`, if you've set up Resend
+
+4. **Point your domain at it.** In the service's **Settings → Networking
+   → Custom Domain**, add the subdomain you want (e.g.
+   `commentinsight.dossentra.app`). Railway shows you a CNAME record and a
+   TXT record -- add both, exactly as shown, in Squarespace's DNS settings
+   for `dossentra.app`. It won't work with just one of the two. This is
+   separate from the DNS records Resend asks you to add for verifying your
+   sending domain -- you'll add both sets of records to the same
+   `dossentra.app` DNS settings, they don't conflict.
+
+5. **Create your own account and invite testers.** These admin scripts
+   need to run against the live database, not your laptop, so you run
+   them *inside* the deployed service rather than locally:
+   ```
+   npm install -g @railway/cli
+   railway login
+   railway link          (pick this project when it asks)
+   railway ssh
+   ```
+   That last command drops you into a shell running inside the actual
+   deployed app. From there, run `python3 scripts/create_user.py` (for
+   yourself) and `python3 scripts/invite_user.py` (for each tester) exactly
+   like you would locally -- `exit` when you're done.
+
+Once this is set up, updates work automatically: push to the branch
+Railway's watching, and it rebuilds and redeploys on its own -- no manual
+`git pull` step like the local setup needs.
 
 ## Getting updates
 

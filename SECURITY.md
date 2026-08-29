@@ -154,10 +154,14 @@ These are mostly business/infrastructure steps, not application code:
    the current pilot round is deliberately using only synthetic/de-identified
    test documents while it's in progress.**
 
-2. **Actual hosting, with TLS.** The app is ready to run behind HTTPS
-   (`SESSION_COOKIE_SECURE=true` enforces it for the session cookie), but
-   provisioning the server, domain, and certificate is a separate,
-   infrastructure-level task outside this repo.
+2. **Actual hosting, with TLS.** Now documented — see "Deploying to
+   Railway" in `README.md`. Railway issues and renews the TLS certificate
+   automatically once a custom domain is added, and
+   `SESSION_COOKIE_SECURE=true` (set as an environment variable there)
+   enforces HTTPS-only session cookies once it's live. What's still a
+   manual, one-time step: actually creating the Railway project, its
+   persistent volume, and the DNS records — nothing here provisions
+   itself.
 
 3. **Encryption at rest.** Uploaded documents and the SQLite database still
    have no encryption of their own. In practice this is usually a hosting
